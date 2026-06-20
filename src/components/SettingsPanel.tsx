@@ -218,8 +218,8 @@ function YouTubeSettings() {
     youTubeServerHasKey().then(setHasServerKey);
   }, []);
 
-  const onSave = () => {
-    if (apiKey.trim()) saveYouTubeKey(apiKey.trim());
+  const onSave = async () => {
+    if (apiKey.trim()) await saveYouTubeKey(apiKey.trim());
     else clearYouTubeKey();
     setSavedFlash(true);
     setTimeout(() => setSavedFlash(false), 2000);
