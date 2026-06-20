@@ -1,0 +1,182 @@
+import { NextResponse } from "next/server";
+import { resolveOllama } from "@/lib/ollama-config";
+
+const SYSTEM_PROMPT = `You are a music curator that designs Spotify playlists.
+Given a user's request, respond with ONLY a JSON object (no prose, no markdown) of this exact shape:
+{
+  "name": string,        // a punchy playlist name, max 80 chars
+  "description": string, // one short sentence describing the vibe
+  "queries": string[]    // 6-10 Spotify search queries that will surface fitting tracks
+}
+Rules for "queries" — these run against the Spotify Search API, so ONLY use real Spotify search syntax:
+- Allowed field filters: genre:, artist:, track:, album:, year: (e.g. genre:edm, artist:Skrillex, year:2015-2024).
+- You MAY also use plain free-text terms (e.g. "big room house", "festival anthem").
+- NEVER invent filters. Do NOT use bpm:, popularity:, energy:, mood:, filter:, or any operator not listed above — Spotify ignores them and returns nothing.
+- One artist per query at most. Keep each query short (1-4 terms).
+- Mix the styles: some genre/subgenre queries, some seed-artist queries, some mood/era free-text. Favor popular, well-known acts that fit the request.
+Return the JSON object and nothing else.`;
+
+interface Intent {
+  name: string;
+  description: string;
+  queries: string[];
+}
+
+function coerceIntent(raw: unknown, fallbackName: string): Intent | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const queries = Array.isArray(o.queries)
+    ? o.queries.filter((q): q is string => typeof q === "string" && q.trim().length > 0)
+    : [];
+  if (queries.length === 0) return null;
+  return {
+    name: typeof o.name === "string" && o.name.trim() ? o.name.trim().slice(0, 80) : fallbackName,
+    description:
+      typeof o.description === "string" ? o.description.trim().slice(0, 200) : "",
+    queries: queries.slice(0, 12),
+  };
+}
+
+export async function POST(req: Request) {
+  let prompt = "";
+  let refine = "";
+  let current: string[] = [];
+  let reqBaseUrl: unknown;
+  let reqModel: unknown;
+  try {
+    const body = await req.json();
+    prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
+    refine = typeof body?.refine === "string" ? body.refine.trim().slice(0, 400) : "";
+    current = Array.isArray(body?.current)
+      ? body.current.filter((s: unknown): s is string => typeof s === "string").slice(0, 40)
+      : [];
+    reqBaseUrl = body?.baseUrl;
+    reqModel = body?.model;
+  } catch {
+    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  }
+
+  // When refining, give the model the current tracklist + the change request.
+  const userContent = refine
+    ? `Original request: "${prompt}"\n\nCurrent playlist:\n${current
+        .map((t) => `- ${t}`)
+        .join("\n")}\n\nChange request: "${refine}"\n\nProduce an UPDATED set of search queries that applies the change request while staying true to the original vibe. Keep what works; adjust the rest.`
+    : prompt;
+
+  const { baseUrl: OLLAMA_BASE_URL, model: OLLAMA_MODEL } = resolveOllama(
+    reqBaseUrl,
+    reqModel,
+  );
+
+  if (!prompt) {
+    return NextResponse.json({ error: "Prompt is required." }, { status: 400 });
+  }
+  if (prompt.length > 400) {
+    return NextResponse.json({ error: "Prompt is too long." }, { status: 400 });
+  }
+
+  // Generation can be slow on local models; cap it so the route never hangs.
+  const TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS ?? 90_000);
+
+  async function callOllama(includeThink: boolean): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    try {
+      return await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: OLLAMA_MODEL,
+          stream: false,
+          format: "json",
+          // Reasoning ("thinking") models otherwise spend a long time before
+          // emitting the JSON — we only need the answer, so turn it off.
+          ...(includeThink ? { think: false } : {}),
+          options: { temperature: 0.8 },
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: userContent },
+          ],
+        }),
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  let res: Response;
+  try {
+    res = await callOllama(true);
+    // Non-thinking models reject `think`; retry once without it.
+    if (res.status === 400) {
+      const peek = await res.clone().text().catch(() => "");
+      if (/think|thinking/i.test(peek)) res = await callOllama(false);
+    }
+  } catch (e) {
+    const aborted = e instanceof Error && e.name === "AbortError";
+    return NextResponse.json(
+      {
+        error: aborted
+          ? `Ollama timed out after ${Math.round(TIMEOUT_MS / 1000)}s with model "${OLLAMA_MODEL}". Try a smaller/faster model via OLLAMA_MODEL.`
+          : `Couldn't reach Ollama at ${OLLAMA_BASE_URL}. Is it running? (ollama serve)`,
+      },
+      { status: 502 },
+    );
+  }
+
+  if (!res.ok) {
+    const raw = await res.text().catch(() => "");
+    // Ollama returns errors as { "error": "..." }; surface just the message.
+    let detail = raw;
+    try {
+      const j = JSON.parse(raw);
+      if (typeof j?.error === "string") detail = j.error;
+    } catch {
+      /* keep raw text */
+    }
+    const notPulled = res.status === 404 || /not found/i.test(detail);
+    const message = notPulled
+      ? `Model "${OLLAMA_MODEL}" isn't available in Ollama. Pull it with: ollama pull ${OLLAMA_MODEL} (or set OLLAMA_MODEL to one you have).`
+      : `Ollama error (${res.status}): ${detail}`;
+    return NextResponse.json({ error: message }, { status: 502 });
+  }
+
+  const data = await res.json().catch(() => null);
+  const content: string | undefined = data?.message?.content;
+  if (!content) {
+    return NextResponse.json({ error: "Empty response from Ollama." }, { status: 502 });
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    // Some models wrap JSON in stray text; grab the first {...} block.
+    const match = content.match(/\{[\s\S]*\}/);
+    if (!match) {
+      return NextResponse.json(
+        { error: "Ollama did not return valid JSON." },
+        { status: 502 },
+      );
+    }
+    try {
+      parsed = JSON.parse(match[0]);
+    } catch {
+      return NextResponse.json(
+        { error: "Ollama did not return valid JSON." },
+        { status: 502 },
+      );
+    }
+  }
+
+  const intent = coerceIntent(parsed, prompt.slice(0, 80));
+  if (!intent) {
+    return NextResponse.json(
+      { error: "Ollama response was missing search queries." },
+      { status: 502 },
+    );
+  }
+
+  return NextResponse.json(intent);
+}
