@@ -31,7 +31,8 @@ export function SearchPanel({
     setLoading(true);
     const handle = setTimeout(async () => {
       try {
-        const res = await sdk.search(q, ["track", "artist"], undefined, 12);
+        // Spotify caps search `limit` at 10 (sending more returns 400).
+        const res = await sdk.search(q, ["track", "artist"], undefined, 10);
         const found = res.tracks?.items ?? [];
         setTracks(found);
         setArtists(res.artists?.items ?? []);
