@@ -11,23 +11,36 @@ import {
   IconExternalLink,
   IconRefresh,
   IconPlayerPlayFilled,
+  IconWorld,
+  IconUserHeart,
 } from "@tabler/icons-react";
 import {
   fetchIntent,
   resolveTracks,
   createPlaylist,
+  buildLibraryPool,
+  curatePlaylist,
   type PlaylistIntent,
 } from "@/lib/playlist";
 import { pickImage } from "@/lib/images";
-import { msToTime } from "@/lib/utils";
+import { cn, msToTime } from "@/lib/utils";
 
-const EXAMPLES = [
-  "EDM bangers for a late-night drive",
-  "Mellow Sunday morning acoustic",
-  "90s hip-hop classics",
-  "Lo-fi beats to focus to",
-  "High-energy gym techno",
-];
+type Mode = "discover" | "personalized";
+
+const EXAMPLES: Record<Mode, string[]> = {
+  discover: [
+    "EDM bangers for a late-night drive",
+    "90s hip-hop classics",
+    "Lo-fi beats to focus to",
+    "High-energy gym techno",
+  ],
+  personalized: [
+    "chill evening wind-down",
+    "upbeat focus session",
+    "nostalgic throwbacks",
+    "high-energy workout",
+  ],
+};
 
 type Stage = "idle" | "generating" | "preview" | "saving" | "done";
 
@@ -40,6 +53,8 @@ export function CreatePanel({
   onReconnect: () => void;
   onPlay: (uris?: string[], context?: string) => void;
 }) {
+  const [mode, setMode] = useState<Mode>("discover");
+  const [pool, setPool] = useState<Track[] | null>(null);
   const [prompt, setPrompt] = useState("");
   const [stage, setStage] = useState<Stage>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -64,17 +79,38 @@ export function CreatePanel({
     setResult(null);
     setStage("generating");
     try {
-      const got = await fetchIntent(text);
-      const resolved = await resolveTracks(sdk, got);
-      if (resolved.length === 0) {
-        throw new Error(
-          "No tracks matched. Try a more specific or popular genre.",
-        );
+      if (mode === "personalized") {
+        let p = pool;
+        if (!p) {
+          p = await buildLibraryPool(sdk);
+          setPool(p);
+        }
+        if (p.length === 0) {
+          throw new Error(
+            "Your library looks empty. Play and save some tracks, or use Discover mode.",
+          );
+        }
+        const cur = await curatePlaylist(text, p);
+        if (cur.tracks.length === 0) {
+          throw new Error("No tracks matched that mood from your library.");
+        }
+        setIntent({ name: cur.name, description: cur.description, queries: [] });
+        setName(cur.name);
+        setDescription(cur.description);
+        setTracks(cur.tracks);
+      } else {
+        const got = await fetchIntent(text);
+        const resolved = await resolveTracks(sdk, got);
+        if (resolved.length === 0) {
+          throw new Error(
+            "No tracks matched. Try a more specific or popular genre.",
+          );
+        }
+        setIntent(got);
+        setName(got.name);
+        setDescription(got.description);
+        setTracks(resolved);
       }
-      setIntent(got);
-      setName(got.name);
-      setDescription(got.description);
-      setTracks(resolved);
       setStage("preview");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
@@ -114,18 +150,35 @@ export function CreatePanel({
     setRefining(true);
     setError(null);
     try {
-      const labels = tracks.map(
-        (t) => `${t.name} — ${t.artists.map((a) => a.name).join(", ")}`,
-      );
-      const got = await fetchIntent(prompt, { refine: instruction, current: labels });
-      const resolved = await resolveTracks(sdk, got);
-      if (resolved.length === 0) {
-        throw new Error("That change returned no tracks — try rephrasing.");
+      if (mode === "personalized" && pool) {
+        const cur = await curatePlaylist(
+          `${prompt}. Adjustment: ${instruction}`,
+          pool,
+        );
+        if (cur.tracks.length === 0) {
+          throw new Error("That change returned no tracks — try rephrasing.");
+        }
+        setIntent({ name: cur.name, description: cur.description, queries: [] });
+        setName(cur.name);
+        setDescription(cur.description);
+        setTracks(cur.tracks);
+      } else {
+        const labels = tracks.map(
+          (t) => `${t.name} — ${t.artists.map((a) => a.name).join(", ")}`,
+        );
+        const got = await fetchIntent(prompt, {
+          refine: instruction,
+          current: labels,
+        });
+        const resolved = await resolveTracks(sdk, got);
+        if (resolved.length === 0) {
+          throw new Error("That change returned no tracks — try rephrasing.");
+        }
+        setIntent(got);
+        setName(got.name);
+        setDescription(got.description);
+        setTracks(resolved);
       }
-      setIntent(got);
-      setName(got.name);
-      setDescription(got.description);
-      setTracks(resolved);
       setRefineText("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't refine the playlist.");
@@ -147,11 +200,31 @@ export function CreatePanel({
 
   return (
     <div className="mx-auto max-w-3xl">
+      {/* Mode toggle */}
+      <div className="mb-4 inline-flex rounded-full border border-white/10 bg-white/5 p-1">
+        <ModeButton
+          active={mode === "discover"}
+          onClick={() => setMode("discover")}
+          disabled={busy}
+        >
+          <IconWorld size={15} /> Discover
+        </ModeButton>
+        <ModeButton
+          active={mode === "personalized"}
+          onClick={() => setMode("personalized")}
+          disabled={busy}
+        >
+          <IconUserHeart size={15} /> From your library
+        </ModeButton>
+      </div>
+
       {/* Prompt box */}
       <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.06] to-white/[0.02] p-6">
         <div className="mb-3 flex items-center gap-2 text-sm font-medium text-neutral-300">
           <IconSparkles size={18} className="text-[#1ed760]" />
-          Describe a playlist and let your local Ollama build it
+          {mode === "personalized"
+            ? "Describe a mood — Ollama curates it from your own top tracks, likes & recent plays"
+            : "Describe a playlist and let your local Ollama build it from Spotify's catalog"}
         </div>
         <textarea
           value={prompt}
@@ -160,12 +233,16 @@ export function CreatePanel({
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) generate();
           }}
           rows={2}
-          placeholder="e.g. EDM bangers for a late-night drive"
+          placeholder={
+            mode === "personalized"
+              ? "e.g. chill evening wind-down"
+              : "e.g. EDM bangers for a late-night drive"
+          }
           className="w-full resize-none rounded-xl border border-white/10 bg-black/40 p-4 text-base text-neutral-100 outline-none transition placeholder:text-neutral-500 focus:border-[#1db954]/60"
         />
 
         <div className="mt-3 flex flex-wrap gap-2">
-          {EXAMPLES.map((ex) => (
+          {EXAMPLES[mode].map((ex) => (
             <button
               key={ex}
               onClick={() => generate(ex)}
@@ -397,5 +474,30 @@ export function CreatePanel({
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+function ModeButton({
+  active,
+  onClick,
+  disabled,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition disabled:opacity-50",
+        active ? "bg-white text-black" : "text-neutral-300 hover:text-white",
+      )}
+    >
+      {children}
+    </button>
   );
 }

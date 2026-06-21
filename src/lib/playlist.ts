@@ -1,10 +1,72 @@
 import type { SpotifyApi, Track, Playlist } from "@spotify/web-api-ts-sdk";
 import { getOllamaSettings } from "@/lib/settings";
+import { getLikedTracks } from "@/lib/library";
 
 export interface PlaylistIntent {
   name: string;
   description: string;
   queries: string[];
+}
+
+/**
+ * Build a candidate pool from the user's OWN library — top tracks (medium +
+ * long term), Liked Songs, and recently played — deduped. Used by the
+ * personalized "from your library" curation mode.
+ */
+export async function buildLibraryPool(sdk: SpotifyApi): Promise<Track[]> {
+  const [topMed, topLong, liked, recent] = await Promise.allSettled([
+    sdk.currentUser.topItems("tracks", "medium_term", 30),
+    sdk.currentUser.topItems("tracks", "long_term", 30),
+    getLikedTracks(sdk, 40),
+    sdk.player.getRecentlyPlayedTracks(30),
+  ]);
+
+  const all: Track[] = [];
+  if (topMed.status === "fulfilled") all.push(...topMed.value.items);
+  if (topLong.status === "fulfilled") all.push(...topLong.value.items);
+  if (liked.status === "fulfilled") all.push(...liked.value.tracks);
+  if (recent.status === "fulfilled")
+    all.push(...recent.value.items.map((i) => i.track));
+
+  const byId = new Map<string, Track>();
+  for (const t of all) if (t?.id && !byId.has(t.id)) byId.set(t.id, t);
+  return [...byId.values()].slice(0, 140);
+}
+
+/**
+ * Ask Ollama to select + order tracks from the user's library pool that match
+ * a mood/request. Returns the chosen tracks in the model's order.
+ */
+export async function curatePlaylist(
+  prompt: string,
+  pool: Track[],
+): Promise<{ name: string; description: string; tracks: Track[] }> {
+  const { baseUrl, model } = getOllamaSettings();
+  const tracks = pool.map((t, i) => ({
+    i,
+    label: `${t.name} — ${t.artists.map((a) => a.name).join(", ")}`,
+  }));
+
+  const res = await fetch("/api/playlist-curate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      prompt,
+      tracks,
+      baseUrl: baseUrl || undefined,
+      model: model || undefined,
+    }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error ?? "Curation failed.");
+
+  const indices: number[] = Array.isArray(data?.indices) ? data.indices : [];
+  const chosen = indices.map((i) => pool[i]).filter(Boolean);
+  return {
+    name: typeof data?.name === "string" ? data.name : prompt.slice(0, 80),
+    description: typeof data?.description === "string" ? data.description : "",
+    tracks: chosen,
+  };
 }
 
 /** Ask the local Ollama proxy to turn a prompt into a structured intent. */

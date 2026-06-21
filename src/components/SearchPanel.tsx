@@ -12,7 +12,9 @@ export function SearchPanel({
   onPlay,
 }: {
   sdk: SpotifyApi;
-  onPlay: (uris: string[]) => void;
+  // `uris` for tracks; `context` (e.g. an artist/playlist URI) for everything
+  // else. Artist URIs must go through context — they're not valid in `uris`.
+  onPlay: (uris?: string[], context?: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -89,7 +91,7 @@ export function SearchPanel({
                     subtitle={`${a.followers?.total?.toLocaleString() ?? 0} followers`}
                     href={a.external_urls?.spotify}
                     round
-                    onPlay={() => onPlay([a.uri])}
+                    onPlay={() => onPlay(undefined, a.uri)}
                   />
                 ))}
               </div>

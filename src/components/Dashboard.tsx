@@ -156,17 +156,50 @@ export function Dashboard({
   /** Start playback on the active device. `uris` for tracks, `context` for playlists/artists. */
   const play = useCallback(
     async (uris?: string[], context?: string) => {
+      const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
       try {
         const { devices } = await sdk.player.getAvailableDevices();
-        const active = devices.find((d) => d.is_active) ?? devices[0];
-        if (!active?.id) {
-          notify("No active Spotify device. Open Spotify on a device first.");
+        if (devices.length === 0) {
+          notify(
+            "No Spotify device found. Open Spotify on your phone, desktop, or web player, then try again.",
+          );
           return;
         }
-        await sdk.player.startResumePlayback(active.id, context, uris);
+        const active = devices.find((d) => d.is_active) ?? devices[0];
+        if (!active?.id) {
+          notify("No usable Spotify device. Open Spotify on a device first.");
+          return;
+        }
+
+        const start = () =>
+          sdk.player.startResumePlayback(active.id!, context, uris);
+        try {
+          await start();
+        } catch (e) {
+          // A device that's available but not active returns 404 "Device not
+          // found". Transfer to activate it, then retry once.
+          if (!active.is_active && /404|not found|no_active_device/i.test(errMsg(e))) {
+            await sdk.player.transferPlayback([active.id], false);
+            await new Promise((r) => setTimeout(r, 700));
+            await start();
+          } else {
+            throw e;
+          }
+        }
         notify("Playing ▶");
-      } catch {
-        notify("Couldn't start playback. A Premium account is required.");
+      } catch (e) {
+        const msg = errMsg(e);
+        if (/premium/i.test(msg)) {
+          notify("Spotify Premium is required to control playback.");
+        } else if (/404|not found|no_active_device/i.test(msg)) {
+          notify(
+            "No active device. Open Spotify and press play once, then control it from here.",
+          );
+        } else if (/403|forbidden|restriction/i.test(msg)) {
+          notify("Spotify blocked that (device restriction). Try another device.");
+        } else {
+          notify(`Couldn't start playback: ${msg.slice(0, 140)}`);
+        }
       }
     },
     [sdk, notify],
@@ -242,7 +275,7 @@ export function Dashboard({
 
       <main className="mx-auto max-w-7xl px-4 py-8">
         {tab === "search" ? (
-          <SearchPanel sdk={sdk} onPlay={(uris) => play(uris)} />
+          <SearchPanel sdk={sdk} onPlay={play} />
         ) : tab === "create" ? (
           <CreatePanel sdk={sdk} onReconnect={onReconnect} onPlay={play} />
         ) : tab === "youtube" ? (
