@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { resolveOllama } from "@/lib/ollama-config";
+import { chatJSON, extractJSON } from "@/lib/llm";
+
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const SYSTEM_PROMPT = `You are a music curator that designs Spotify playlists.
 Given a user's request, respond with ONLY a JSON object (no prose, no markdown) of this exact shape:
@@ -63,11 +66,6 @@ export async function POST(req: Request) {
         .join("\n")}\n\nChange request: "${refine}"\n\nProduce an UPDATED set of search queries that applies the change request while staying true to the original vibe. Keep what works; adjust the rest.`
     : prompt;
 
-  const { baseUrl: OLLAMA_BASE_URL, model: OLLAMA_MODEL } = resolveOllama(
-    reqBaseUrl,
-    reqModel,
-  );
-
   if (!prompt) {
     return NextResponse.json({ error: "Prompt is required." }, { status: 400 });
   }
@@ -75,105 +73,32 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Prompt is too long." }, { status: 400 });
   }
 
-  // Generation can be slow on local models; cap it so the route never hangs.
-  const TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS ?? 90_000);
-
-  async function callOllama(includeThink: boolean): Promise<Response> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    try {
-      return await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body: JSON.stringify({
-          model: OLLAMA_MODEL,
-          stream: false,
-          format: "json",
-          // Reasoning ("thinking") models otherwise spend a long time before
-          // emitting the JSON — we only need the answer, so turn it off.
-          ...(includeThink ? { think: false } : {}),
-          options: { temperature: 0.8 },
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: userContent },
-          ],
-        }),
-      });
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
-  let res: Response;
-  try {
-    res = await callOllama(true);
-    // Non-thinking models reject `think`; retry once without it.
-    if (res.status === 400) {
-      const peek = await res.clone().text().catch(() => "");
-      if (/think|thinking/i.test(peek)) res = await callOllama(false);
-    }
-  } catch (e) {
-    const aborted = e instanceof Error && e.name === "AbortError";
+  const chat = await chatJSON({
+    system: SYSTEM_PROMPT,
+    user: userContent,
+    temperature: 0.8,
+    baseUrl: reqBaseUrl,
+    model: reqModel,
+  });
+  if (!chat.ok || !chat.content) {
     return NextResponse.json(
-      {
-        error: aborted
-          ? `Ollama timed out after ${Math.round(TIMEOUT_MS / 1000)}s with model "${OLLAMA_MODEL}". Try a smaller/faster model via OLLAMA_MODEL.`
-          : `Couldn't reach Ollama at ${OLLAMA_BASE_URL}. Is it running? (ollama serve)`,
-      },
-      { status: 502 },
+      { error: chat.error ?? "The model failed to respond." },
+      { status: chat.status ?? 502 },
     );
   }
 
-  if (!res.ok) {
-    const raw = await res.text().catch(() => "");
-    // Ollama returns errors as { "error": "..." }; surface just the message.
-    let detail = raw;
-    try {
-      const j = JSON.parse(raw);
-      if (typeof j?.error === "string") detail = j.error;
-    } catch {
-      /* keep raw text */
-    }
-    const notPulled = res.status === 404 || /not found/i.test(detail);
-    const message = notPulled
-      ? `Model "${OLLAMA_MODEL}" isn't available in Ollama. Pull it with: ollama pull ${OLLAMA_MODEL} (or set OLLAMA_MODEL to one you have).`
-      : `Ollama error (${res.status}): ${detail}`;
-    return NextResponse.json({ error: message }, { status: 502 });
-  }
-
-  const data = await res.json().catch(() => null);
-  const content: string | undefined = data?.message?.content;
-  if (!content) {
-    return NextResponse.json({ error: "Empty response from Ollama." }, { status: 502 });
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    // Some models wrap JSON in stray text; grab the first {...} block.
-    const match = content.match(/\{[\s\S]*\}/);
-    if (!match) {
-      return NextResponse.json(
-        { error: "Ollama did not return valid JSON." },
-        { status: 502 },
-      );
-    }
-    try {
-      parsed = JSON.parse(match[0]);
-    } catch {
-      return NextResponse.json(
-        { error: "Ollama did not return valid JSON." },
-        { status: 502 },
-      );
-    }
+  const parsed = extractJSON(chat.content);
+  if (!parsed) {
+    return NextResponse.json(
+      { error: "The model did not return valid JSON." },
+      { status: 502 },
+    );
   }
 
   const intent = coerceIntent(parsed, prompt.slice(0, 80));
   if (!intent) {
     return NextResponse.json(
-      { error: "Ollama response was missing search queries." },
+      { error: "The model response was missing search queries." },
       { status: 502 },
     );
   }

@@ -21,6 +21,7 @@ import {
 import { youTubeServerHasKey, testYouTubeKey } from "@/lib/youtube";
 
 interface OllamaStatus {
+  provider?: "ollama" | "gateway";
   baseUrl: string;
   model: string;
   defaultBaseUrl: string;
@@ -74,12 +75,18 @@ export function SettingsPanel() {
 
   const usingDefaultUrl = !baseUrl.trim();
   const usingDefaultModel = !model.trim();
+  const isGateway = status?.provider === "gateway";
 
   return (
     <div className="mx-auto max-w-2xl">
       <div className="mb-6 flex items-center gap-2">
         <IconServer size={22} className="text-[#1ed760]" />
-        <h2 className="text-xl font-bold tracking-tight">Ollama integration</h2>
+        <h2 className="text-xl font-bold tracking-tight">AI model</h2>
+        {status && (
+          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-xs text-neutral-400">
+            {isGateway ? "Vercel AI Gateway" : "Ollama (local)"}
+          </span>
+        )}
       </div>
 
       {/* Live status */}
@@ -116,21 +123,23 @@ export function SettingsPanel() {
 
       {/* Editor */}
       <div className="space-y-5 rounded-2xl border border-white/10 bg-white/[0.02] p-5">
-        <Field
-          label="Base URL"
-          hint={
-            usingDefaultUrl
-              ? `Using server default (${status?.defaultBaseUrl ?? "…"})`
-              : "Custom value"
-          }
-        >
-          <input
-            value={baseUrl}
-            onChange={(e) => setBaseUrl(e.target.value)}
-            placeholder={status?.defaultBaseUrl ?? "http://localhost:11434"}
-            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none transition placeholder:text-neutral-600 focus:border-[#1db954]/60"
-          />
-        </Field>
+        {!isGateway && (
+          <Field
+            label="Base URL"
+            hint={
+              usingDefaultUrl
+                ? `Using server default (${status?.defaultBaseUrl ?? "…"})`
+                : "Custom value"
+            }
+          >
+            <input
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              placeholder={status?.defaultBaseUrl ?? "http://localhost:11434"}
+              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none transition placeholder:text-neutral-600 focus:border-[#1db954]/60"
+            />
+          </Field>
+        )}
 
         <Field
           label="Model"

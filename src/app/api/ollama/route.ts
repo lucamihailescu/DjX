@@ -1,25 +1,42 @@
 import { NextResponse } from "next/server";
 import {
-  resolveOllama,
+  llmProvider,
+  defaultModel,
+  resolveModel,
+  resolveOllamaBaseUrl,
   DEFAULT_OLLAMA_BASE_URL,
-  DEFAULT_OLLAMA_MODEL,
-} from "@/lib/ollama-config";
+} from "@/lib/llm";
 
-// Reports the effective Ollama config, whether it's reachable, and the list of
-// installed models (via Ollama's /api/tags). Accepts ?baseUrl= to test a value
-// the user is typing in Settings before they save it.
+// Reports the active LLM provider and its status for the Settings page.
+// - gateway: configured-or-not based on AI_GATEWAY_API_KEY (no model list).
+// - ollama: reachability + installed models (via /api/tags). ?baseUrl= lets
+//   the user test a value they're typing before saving.
 export async function GET(req: Request) {
+  const provider = llmProvider();
   const { searchParams } = new URL(req.url);
-  const { baseUrl, model } = resolveOllama(
-    searchParams.get("baseUrl"),
-    searchParams.get("model"),
-  );
+  const model = resolveModel(searchParams.get("model"));
 
+  if (provider === "gateway") {
+    const hasKey = Boolean(process.env.AI_GATEWAY_API_KEY);
+    return NextResponse.json({
+      provider,
+      baseUrl: "Vercel AI Gateway",
+      model,
+      defaultBaseUrl: "Vercel AI Gateway",
+      defaultModel: defaultModel(),
+      reachable: hasKey,
+      models: [],
+      error: hasKey ? undefined : "Missing AI_GATEWAY_API_KEY.",
+    });
+  }
+
+  const baseUrl = resolveOllamaBaseUrl(searchParams.get("baseUrl"));
   const base = {
+    provider,
     baseUrl,
     model,
     defaultBaseUrl: DEFAULT_OLLAMA_BASE_URL,
-    defaultModel: DEFAULT_OLLAMA_MODEL,
+    defaultModel: defaultModel(),
   };
 
   const controller = new AbortController();

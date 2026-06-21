@@ -26,7 +26,7 @@ async function userIdFromRequest(req: Request): Promise<string | null> {
 export async function GET(req: Request) {
   const userId = await userIdFromRequest(req);
   if (!userId) return NextResponse.json({ items: [] });
-  const items = readKV<unknown[]>(userId, NAMESPACE) ?? [];
+  const items = (await readKV<unknown[]>(userId, NAMESPACE)) ?? [];
   return NextResponse.json({ items });
 }
 
@@ -37,6 +37,6 @@ export async function PUT(req: Request) {
   }
   const body = await req.json().catch(() => null);
   const items = Array.isArray(body?.items) ? body.items.slice(0, MAX_ITEMS) : [];
-  writeKV(userId, NAMESPACE, items);
+  await writeKV(userId, NAMESPACE, items);
   return NextResponse.json({ ok: true });
 }

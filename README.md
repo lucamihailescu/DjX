@@ -12,7 +12,12 @@ A modern web UI for Spotify, built with [`@spotify/web-api-ts-sdk`](https://gith
 
 ## AI playlist builder
 
-The **Create** tab uses a local [Ollama](https://ollama.com) instance — no cloud AI key.
+The **Create** tab works with two interchangeable LLM backends, chosen by `LLM_PROVIDER`:
+
+- **`ollama`** (default) — a local [Ollama](https://ollama.com) instance. Free, offline, ideal for local dev.
+- **`gateway`** — the [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) (OpenAI-compatible). Use this when deploying to Vercel, where there's no local Ollama. Set `AI_GATEWAY_API_KEY` (or rely on OIDC on Vercel) and `LLM_MODEL` (e.g. `openai/gpt-4o-mini`).
+
+Both share the same route code (`src/lib/llm.ts` → `chatJSON`); only env differs. Local-dev quick start with Ollama:
 
 1. Install Ollama and pull a model:
    ```bash
@@ -59,6 +64,21 @@ How it works: the browser posts the prompt to `/api/playlist-intent` (a Next rou
 - `logout()` clears the cached token.
 
 Tokens live in the browser's local storage and refresh automatically.
+
+## Deploying to Vercel
+
+The app runs locally against a persistent machine (SQLite + local Ollama). For Vercel's serverless/ephemeral environment, two backends switch automatically by env — **no code changes**:
+
+| Concern | Local dev (default) | Vercel |
+|---|---|---|
+| LLM (Create/Curate) | local Ollama | **Vercel AI Gateway** — set `LLM_PROVIDER=gateway`, `AI_GATEWAY_API_KEY`, `LLM_MODEL` |
+| Persistence (YouTube history) | SQLite (`./data/djx.db`) | **Upstash Redis / Vercel KV** — set `UPSTASH_REDIS_REST_URL` + `_TOKEN` (or `KV_*`) |
+
+Both stores share one API (`src/lib/db.ts`); the LLM shares one (`src/lib/llm.ts`). Other Vercel notes:
+
+- **Spotify redirect URI:** add `https://<your-app>.vercel.app` (or your custom domain) to the Spotify dashboard. You can leave `NEXT_PUBLIC_SPOTIFY_REDIRECT_URI` unset — the app derives it from `window.location.origin` at runtime. (OAuth won't work on random *preview* URLs, since Spotify has no wildcard redirect URIs.)
+- **YouTube key:** restrict it by **API (YouTube Data API v3)**, not HTTP referrer — server-side calls from Vercel send no referrer.
+- **Env vars** are set in the Vercel project; `NEXT_PUBLIC_*` are inlined at build, so set them before deploying.
 
 ## Notes
 
