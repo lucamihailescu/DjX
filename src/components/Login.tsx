@@ -8,10 +8,13 @@ import { HoverBorderGradient } from "./ui/hover-border-gradient";
 export function Login({
   onLogin,
   error,
+  entraUser,
 }: {
   onLogin: () => void;
   error?: string | null;
+  entraUser?: { name: string | null; email: string | null } | null;
 }) {
+  const entraLabel = entraUser?.email || entraUser?.name;
   return (
     <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-black/[0.96] antialiased">
       <Spotlight className="-top-40 left-0 md:-top-20 md:left-60" fill="#1db954" />
@@ -51,6 +54,20 @@ export function Login({
             Connect with Spotify
           </HoverBorderGradient>
         </div>
+
+        {entraLabel && (
+          <p className="mx-auto mt-6 text-xs text-neutral-500">
+            Signed in as{" "}
+            <span className="text-neutral-300">{entraLabel}</span>
+            {" · "}
+            <a
+              href="/api/auth/signout"
+              className="underline underline-offset-2 transition hover:text-neutral-300"
+            >
+              Sign out
+            </a>
+          </p>
+        )}
 
         {error && (
           <p className="mx-auto mt-6 max-w-md rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
