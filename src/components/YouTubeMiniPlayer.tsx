@@ -7,8 +7,12 @@ import {
   IconPlayerTrackNextFilled,
   IconPlayerTrackPrevFilled,
   IconRepeat,
+  IconMicrophone,
+  IconMicrophoneFilled,
 } from "@tabler/icons-react";
 import { useYouTube } from "./youtube-context";
+import type { YouTubeResult } from "@/lib/youtube";
+import { fetchDjLine, synthesizeSpeech } from "@/lib/dj";
 
 /**
  * Persistent YouTube player docked above the playback bar. Rendered once at the
@@ -16,13 +20,102 @@ import { useYouTube } from "./youtube-context";
  * playing while you browse, and the PlaybackBar can reflect what's playing.
  */
 export function YouTubeMiniPlayer() {
-  const { current, queue, played, next, previous, stop, volume } = useYouTube();
+  const {
+    current,
+    queue,
+    played,
+    next,
+    previous,
+    stop,
+    volume,
+    djEnabled,
+    setDjEnabled,
+  } = useYouTube();
   const [origin, setOrigin] = useState("");
+  const [djSpeaking, setDjSpeaking] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // Latest values for the DJ orchestration, which runs from a player event
+  // callback (stale closures otherwise).
+  const queueRef = useRef<YouTubeResult[]>([]);
+  const currentRef = useRef<YouTubeResult | null>(null);
+  const djRef = useRef(false);
+  const djAudioRef = useRef<HTMLAudioElement | null>(null);
+  const djResolveRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    queueRef.current = queue;
+  }, [queue]);
+  useEffect(() => {
+    currentRef.current = current;
+  }, [current]);
+  useEffect(() => {
+    djRef.current = djEnabled;
+  }, [djEnabled]);
 
   useEffect(() => {
     setOrigin(window.location.origin);
   }, []);
+
+  // Stop any in-flight DJ intro (on manual skip / close).
+  const cancelDj = useCallback(() => {
+    djAudioRef.current?.pause();
+    djAudioRef.current = null;
+    djResolveRef.current?.();
+    djResolveRef.current = null;
+    setDjSpeaking(false);
+  }, []);
+
+  // Speak a short intro for the upcoming track, then resolve. Best-effort: any
+  // failure (no key, quota, offline) just resolves so playback continues.
+  const playIntro = useCallback(
+    async (track: YouTubeResult, prev: YouTubeResult | null) => {
+      setDjSpeaking(true);
+      try {
+        const line = await fetchDjLine(track, prev);
+        if (!line) return;
+        const blob = await synthesizeSpeech(line);
+        const url = URL.createObjectURL(blob);
+        await new Promise<void>((resolve) => {
+          djResolveRef.current = resolve;
+          const audio = new Audio(url);
+          djAudioRef.current = audio;
+          audio.onended = () => resolve();
+          audio.onerror = () => resolve();
+          audio.play().catch(() => resolve());
+        });
+        URL.revokeObjectURL(url);
+      } catch {
+        /* skip the intro on any error */
+      } finally {
+        djAudioRef.current = null;
+        djResolveRef.current = null;
+        setDjSpeaking(false);
+      }
+    },
+    [],
+  );
+
+  // Auto-advance: optionally speak a DJ intro in the gap, then start the next.
+  const advance = useCallback(async () => {
+    const upcoming = queueRef.current[0];
+    if (djRef.current && upcoming) {
+      await playIntro(upcoming, currentRef.current);
+    }
+    next();
+  }, [next, playIntro]);
+
+  const skipNext = useCallback(() => {
+    cancelDj();
+    next();
+  }, [cancelDj, next]);
+  const skipPrev = useCallback(() => {
+    cancelDj();
+    previous();
+  }, [cancelDj, previous]);
+  const closePlayer = useCallback(() => {
+    cancelDj();
+    stop();
+  }, [cancelDj, stop]);
 
   // Drive the embedded player's volume via the IFrame API postMessage protocol
   // (requires enablejsapi=1). Commands sent before the player is ready are
@@ -60,11 +153,11 @@ export function YouTubeMiniPlayer() {
         }
       }
       const msg = data as { event?: string; info?: unknown };
-      if (msg?.event === "onStateChange" && msg?.info === 0) next();
+      if (msg?.event === "onStateChange" && msg?.info === 0) advance();
     }
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [next]);
+  }, [advance]);
 
   if (!current) return null;
 
@@ -76,7 +169,7 @@ export function YouTubeMiniPlayer() {
 
   return (
     <div className="fixed bottom-24 right-4 z-50 w-[340px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-white/10 bg-black shadow-2xl">
-      <div className="aspect-video w-full">
+      <div className="relative aspect-video w-full">
         <iframe
           key={current.videoId}
           ref={iframeRef}
@@ -91,6 +184,12 @@ export function YouTubeMiniPlayer() {
             command("setVolume", [volume]);
           }}
         />
+        {djSpeaking && (
+          <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/70 text-sm font-medium text-white">
+            <IconMicrophoneFilled size={18} className="animate-pulse text-[#1ed760]" />
+            DJ is talking…
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-2 px-3 py-2">
         <div className="min-w-0 flex-1">
@@ -104,7 +203,23 @@ export function YouTubeMiniPlayer() {
           </div>
         </div>
         <button
-          onClick={previous}
+          onClick={() => setDjEnabled(!djEnabled)}
+          className={`rounded-full p-1.5 transition hover:bg-white/10 ${
+            djEnabled
+              ? "text-[#1ed760]"
+              : "text-neutral-400 hover:text-white"
+          }`}
+          aria-label={djEnabled ? "Turn AI DJ off" : "Turn AI DJ on"}
+          title="AI DJ — spoken intros between queued tracks"
+        >
+          {djEnabled ? (
+            <IconMicrophoneFilled size={15} />
+          ) : (
+            <IconMicrophone size={15} />
+          )}
+        </button>
+        <button
+          onClick={skipPrev}
           disabled={played.length === 0}
           className="rounded-full p-1.5 text-neutral-400 transition hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent"
           aria-label="Previous in queue"
@@ -122,7 +237,7 @@ export function YouTubeMiniPlayer() {
           <IconRepeat size={15} />
         </button>
         <button
-          onClick={next}
+          onClick={skipNext}
           disabled={queue.length === 0}
           className="rounded-full p-1.5 text-neutral-400 transition hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent"
           aria-label="Next in queue"
@@ -139,7 +254,7 @@ export function YouTubeMiniPlayer() {
           <IconExternalLink size={15} />
         </a>
         <button
-          onClick={stop}
+          onClick={closePlayer}
           className="rounded-full p-1.5 text-neutral-400 transition hover:bg-white/10 hover:text-white"
           aria-label="Close player"
         >

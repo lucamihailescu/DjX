@@ -19,6 +19,8 @@ interface YouTubeContextValue {
   played: YouTubeResult[]; // videos played earlier in this queue run (for `previous`)
   volume: number; // 0–100, applied to the embedded player
   setVolume: (v: number) => void;
+  djEnabled: boolean; // AI DJ spoken intros between queued tracks
+  setDjEnabled: (v: boolean) => void;
   play: (r: YouTubeResult) => void; // play one video, clearing any queue
   playQueue: (items: YouTubeResult[]) => void; // play the first, queue the rest
   next: () => void; // advance to the next queued video (called on video end)
@@ -30,6 +32,7 @@ const YouTubeContext = createContext<YouTubeContextValue | null>(null);
 
 const HISTORY_KEY = "djx.youtube.history";
 const HISTORY_MAX = 24;
+const DJ_KEY = "djx.youtube.dj";
 
 export function YouTubeProvider({
   children,
@@ -44,6 +47,7 @@ export function YouTubeProvider({
   const [queue, setQueue] = useState<YouTubeResult[]>([]);
   const [played, setPlayed] = useState<YouTubeResult[]>([]);
   const [volume, setVolume] = useState(100);
+  const [djEnabled, setDjEnabledState] = useState(false);
   // Mirror current/queue/played in refs so `next()` and `previous()` (fired from
   // a player event) always read the latest values without being re-created on
   // every change.
@@ -51,11 +55,21 @@ export function YouTubeProvider({
   const queueRef = useRef<YouTubeResult[]>([]);
   const playedRef = useRef<YouTubeResult[]>([]);
 
+  const setDjEnabled = useCallback((v: boolean) => {
+    setDjEnabledState(v);
+    try {
+      window.localStorage.setItem(DJ_KEY, v ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   // Load the local cache instantly, then reconcile with the server copy.
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(HISTORY_KEY);
       if (raw) setHistory(JSON.parse(raw));
+      setDjEnabledState(window.localStorage.getItem(DJ_KEY) === "1");
     } catch {
       /* ignore */
     }
@@ -166,6 +180,8 @@ export function YouTubeProvider({
         played,
         volume,
         setVolume,
+        djEnabled,
+        setDjEnabled,
         play,
         playQueue,
         next,

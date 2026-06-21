@@ -24,6 +24,7 @@ import {
 } from "@/lib/playlist";
 import { pickImage } from "@/lib/images";
 import { cn, msToTime } from "@/lib/utils";
+import { VoiceButton } from "./VoiceButton";
 
 type Mode = "discover" | "personalized";
 
@@ -256,6 +257,12 @@ export function CreatePanel({
 
         <div className="mt-5 flex items-center justify-between gap-4">
           <span className="text-xs text-neutral-500">⌘/Ctrl + Enter</span>
+          <div className="flex items-center gap-2">
+          <VoiceButton
+            onTranscript={(t) => generate(t)}
+            disabled={busy}
+            title="Speak a playlist idea"
+          />
           <button
             onClick={() => generate()}
             disabled={busy || !prompt.trim()}
@@ -271,6 +278,7 @@ export function CreatePanel({
               </>
             )}
           </button>
+          </div>
         </div>
       </div>
 

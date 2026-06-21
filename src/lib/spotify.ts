@@ -12,6 +12,8 @@ export const SPOTIFY_SCOPES = [
   "user-read-playback-state",
   "user-modify-playback-state",
   "user-read-currently-playing",
+  // Required for the Web Playback SDK (in-browser playback device, Premium only).
+  "streaming",
   "playlist-read-private",
   "playlist-modify-public",
   "playlist-modify-private",
