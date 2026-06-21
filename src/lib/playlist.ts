@@ -71,7 +71,11 @@ export async function curatePlaylist(
 /** Ask the local Ollama proxy to turn a prompt into a structured intent. */
 export async function fetchIntent(
   prompt: string,
-  opts?: { refine?: string; current?: string[] },
+  opts?: {
+    refine?: string;
+    current?: string[];
+    target?: "spotify" | "youtube";
+  },
 ): Promise<PlaylistIntent> {
   const { model } = getOllamaSettings();
   const res = await fetch("/api/playlist-intent", {
@@ -81,6 +85,7 @@ export async function fetchIntent(
       prompt,
       refine: opts?.refine || undefined,
       current: opts?.current || undefined,
+      target: opts?.target || undefined,
       model: model || undefined,
     }),
   });

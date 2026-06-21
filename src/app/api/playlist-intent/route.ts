@@ -19,6 +19,20 @@ Rules for "queries" — these run against the Spotify Search API, so ONLY use re
 - Mix the styles: some genre/subgenre queries, some seed-artist queries, some mood/era free-text. Favor popular, well-known acts that fit the request.
 Return the JSON object and nothing else.`;
 
+const YT_SYSTEM_PROMPT = `You are a music curator that builds a YouTube music-video queue.
+Given a user's request, respond with ONLY a JSON object (no prose, no markdown) of this exact shape:
+{
+  "name": string,        // a punchy queue name, max 80 chars
+  "description": string, // one short sentence describing the vibe
+  "queries": string[]    // 8-12 YouTube search queries, each naming ONE specific song
+}
+Rules for "queries" — these run against YouTube search:
+- Each query names a SPECIFIC, real song the way a person would type it, e.g. "Daft Punk - Around the World" or "Tame Impala The Less I Know The Better".
+- Prefer the "Artist - Song Title" form. Pick well-known songs that fit the request.
+- Do NOT use field filters like genre:, year:, or bpm: — YouTube ignores them.
+- Spread the picks across the artists, era, and mood implied by the request.
+Return the JSON object and nothing else.`;
+
 interface Intent {
   name: string;
   description: string;
@@ -45,6 +59,7 @@ export async function POST(req: Request) {
   let refine = "";
   let current: string[] = [];
   let reqModel: unknown;
+  let target: "spotify" | "youtube" = "spotify";
   try {
     const body = await req.json();
     prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
@@ -53,6 +68,7 @@ export async function POST(req: Request) {
       ? body.current.filter((s: unknown): s is string => typeof s === "string").slice(0, 40)
       : [];
     reqModel = body?.model;
+    target = body?.target === "youtube" ? "youtube" : "spotify";
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
@@ -72,7 +88,7 @@ export async function POST(req: Request) {
   }
 
   const chat = await chatJSON({
-    system: SYSTEM_PROMPT,
+    system: target === "youtube" ? YT_SYSTEM_PROMPT : SYSTEM_PROMPT,
     user: userContent,
     temperature: 0.8,
     model: reqModel,
