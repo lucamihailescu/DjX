@@ -8,6 +8,8 @@ export interface OllamaSettings {
 
 const KEY = "djx.ollama";
 const YT_KEY = "djx.youtube";
+const EL_KEY = "djx.elevenlabs";
+const EL_VOICE = "djx.elevenlabs.voice";
 const YT_KEY_ENC_PREFIX = "enc:v1:";
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -107,4 +109,39 @@ export async function saveYouTubeKey(key: string) {
 
 export function clearYouTubeKey() {
   window.localStorage.removeItem(YT_KEY);
+}
+
+/**
+ * ElevenLabs API key (for the AI DJ voice-over). Stored encrypted, like the
+ * YouTube key. Unlike `getYouTubeKey`, this resolves the decrypted value so it
+ * can be sent as a request header — "" means "use the server env key".
+ */
+export async function getElevenLabsKey(): Promise<string> {
+  if (typeof window === "undefined") return "";
+  try {
+    const stored = window.localStorage.getItem(EL_KEY) ?? "";
+    if (!stored) return "";
+    return await decryptFromStorage(stored);
+  } catch {
+    return "";
+  }
+}
+
+export async function saveElevenLabsKey(key: string) {
+  window.localStorage.setItem(EL_KEY, await encryptForStorage(key));
+}
+
+export function clearElevenLabsKey() {
+  window.localStorage.removeItem(EL_KEY);
+}
+
+/** Optional ElevenLabs voice id (non-secret; "" means the server default). */
+export function getElevenLabsVoice(): string {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem(EL_VOICE) ?? "";
+}
+
+export function setElevenLabsVoice(v: string) {
+  if (v.trim()) window.localStorage.setItem(EL_VOICE, v.trim());
+  else window.localStorage.removeItem(EL_VOICE);
 }

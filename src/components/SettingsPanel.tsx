@@ -9,6 +9,7 @@ import {
   IconDeviceFloppy,
   IconRefresh,
   IconBrandYoutubeFilled,
+  IconMicrophoneFilled,
 } from "@tabler/icons-react";
 import {
   getOllamaSettings,
@@ -17,6 +18,11 @@ import {
   getYouTubeKey,
   saveYouTubeKey,
   clearYouTubeKey,
+  getElevenLabsKey,
+  saveElevenLabsKey,
+  clearElevenLabsKey,
+  getElevenLabsVoice,
+  setElevenLabsVoice,
 } from "@/lib/settings";
 import {
   youTubeServerHasKey,
@@ -24,6 +30,7 @@ import {
   getQuotaUsage,
   type QuotaUsage,
 } from "@/lib/youtube";
+import { elevenLabsServerHasKey } from "@/lib/dj";
 
 interface OllamaStatus {
   provider?: "ollama" | "gateway";
@@ -216,6 +223,7 @@ export function SettingsPanel() {
       </div>
 
       <YouTubeSettings />
+      <ElevenLabsSettings />
     </div>
   );
 }
@@ -392,6 +400,116 @@ function QuotaMeter({
         </a>
         .
       </p>
+    </div>
+  );
+}
+
+function ElevenLabsSettings() {
+  const [apiKey, setApiKey] = useState("");
+  const [voice, setVoice] = useState("");
+  const [hasServerKey, setHasServerKey] = useState(false);
+  const [reveal, setReveal] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
+
+  useEffect(() => {
+    getElevenLabsKey().then(setApiKey);
+    setVoice(getElevenLabsVoice());
+    elevenLabsServerHasKey().then(setHasServerKey);
+  }, []);
+
+  const onSave = async () => {
+    if (apiKey.trim()) await saveElevenLabsKey(apiKey.trim());
+    else clearElevenLabsKey();
+    setElevenLabsVoice(voice.trim());
+    setSavedFlash(true);
+    setTimeout(() => setSavedFlash(false), 2000);
+  };
+
+  const onReset = () => {
+    clearElevenLabsKey();
+    setElevenLabsVoice("");
+    setApiKey("");
+    setVoice("");
+  };
+
+  const source = apiKey.trim()
+    ? "Using a key saved in this browser"
+    : hasServerKey
+      ? "Using the server's env key"
+      : "No key configured — the AI DJ stays silent";
+
+  return (
+    <div className="mt-8">
+      <div className="mb-6 flex items-center gap-2">
+        <IconMicrophoneFilled size={20} className="text-[#1ed760]" />
+        <h2 className="text-xl font-bold tracking-tight">AI DJ voice (ElevenLabs)</h2>
+      </div>
+
+      <div className="space-y-5 rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+        <Field label="ElevenLabs API key" hint={source}>
+          <div className="flex gap-2">
+            <input
+              type={reveal ? "text" : "password"}
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={hasServerKey ? "•••••• (server key in use)" : "sk_…"}
+              autoComplete="off"
+              spellCheck={false}
+              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 font-mono text-sm text-neutral-100 outline-none transition placeholder:font-sans placeholder:text-neutral-600 focus:border-[#1db954]/60"
+            />
+            <button
+              onClick={() => setReveal((r) => !r)}
+              className="shrink-0 rounded-lg border border-white/10 px-3 text-xs text-neutral-300 transition hover:bg-white/10"
+            >
+              {reveal ? "Hide" : "Show"}
+            </button>
+          </div>
+        </Field>
+
+        <Field
+          label="Voice ID"
+          hint="Optional — defaults to the server's voice"
+        >
+          <input
+            value={voice}
+            onChange={(e) => setVoice(e.target.value)}
+            placeholder="e.g. 9BWtsMINqrJLrRacOk9x (Aria)"
+            spellCheck={false}
+            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 font-mono text-sm text-neutral-100 outline-none transition placeholder:font-sans placeholder:text-neutral-600 focus:border-[#1db954]/60"
+          />
+        </Field>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={onSave}
+            className="flex items-center gap-2 rounded-full bg-[#1db954] px-5 py-2 text-sm font-semibold text-black transition hover:scale-[1.03] hover:bg-[#1ed760]"
+          >
+            <IconDeviceFloppy size={16} />
+            {savedFlash ? "Saved ✓" : "Save"}
+          </button>
+          <button
+            onClick={onReset}
+            className="text-xs text-neutral-500 transition hover:text-neutral-300"
+          >
+            Clear
+          </button>
+        </div>
+
+        <p className="text-xs text-neutral-500">
+          Powers the <span className="text-neutral-400">AI DJ</span> toggle on the
+          YouTube player — spoken intros between queued tracks. Stored in this
+          browser and sent only to DjX&apos;s own server route. Get a key from{" "}
+          <a
+            href="https://elevenlabs.io/app/settings/api-keys"
+            target="_blank"
+            rel="noreferrer"
+            className="text-neutral-400 underline transition hover:text-neutral-200"
+          >
+            elevenlabs.io
+          </a>
+          . Each intro spends a small amount of TTS credits.
+        </p>
+      </div>
     </div>
   );
 }
