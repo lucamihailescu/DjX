@@ -117,7 +117,10 @@ async function gatewayChat(
       body: JSON.stringify({
         model,
         temperature,
-        response_format: { type: "json_object" },
+        // No response_format: the gateway only accepts json_schema/json (not the
+        // OpenAI "json_object" type), and support varies by provider. Our system
+        // prompts already mandate raw JSON, and extractJSON() repairs any
+        // markdown/prose wrapping — so this stays portable across all models.
         messages: [
           { role: "system", content: system },
           { role: "user", content: user },
