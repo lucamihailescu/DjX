@@ -21,6 +21,27 @@ export async function searchYouTube(q: string): Promise<YouTubeResult[]> {
   return data.items ?? [];
 }
 
+/**
+ * Resolve a list of AI-generated search queries to real, deduped YouTube
+ * videos. Each query names one specific song, so we take the top hit per query.
+ * Queries are capped because each search.list call costs 100 quota units.
+ */
+export async function resolveYouTube(
+  queries: string[],
+  limit = 20,
+): Promise<YouTubeResult[]> {
+  const capped = queries.slice(0, 12);
+  const settled = await Promise.allSettled(capped.map((q) => searchYouTube(q)));
+
+  const byId = new Map<string, YouTubeResult>();
+  for (const r of settled) {
+    if (r.status !== "fulfilled") continue;
+    const top = r.value[0];
+    if (top && !byId.has(top.videoId)) byId.set(top.videoId, top);
+  }
+  return [...byId.values()].slice(0, limit);
+}
+
 /** Whether the server has a YOUTUBE_API_KEY env configured (no quota cost). */
 export async function youTubeServerHasKey(): Promise<boolean> {
   try {
