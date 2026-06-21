@@ -14,14 +14,14 @@ import {
 export async function GET(req: Request) {
   const provider = llmProvider();
   const { searchParams } = new URL(req.url);
-  const model = resolveModel(searchParams.get("model"));
 
   if (provider === "gateway") {
+    // Model is env-controlled (LLM_MODEL); the client's value doesn't apply.
     const hasKey = Boolean(process.env.AI_GATEWAY_API_KEY);
     return NextResponse.json({
       provider,
       baseUrl: "Vercel AI Gateway",
-      model,
+      model: defaultModel(),
       defaultBaseUrl: "Vercel AI Gateway",
       defaultModel: defaultModel(),
       reachable: hasKey,
@@ -30,6 +30,7 @@ export async function GET(req: Request) {
     });
   }
 
+  const model = resolveModel(searchParams.get("model"));
   const baseUrl = resolveOllamaBaseUrl(searchParams.get("baseUrl"));
   const base = {
     provider,

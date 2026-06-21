@@ -59,6 +59,17 @@ export function SettingsPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // On the gateway, the model/URL are env-controlled. Drop any stale local
+  // Ollama settings so the client doesn't send an Ollama model id to it.
+  useEffect(() => {
+    if (status?.provider === "gateway" && (saved.baseUrl || saved.model)) {
+      clearOllamaSettings();
+      setBaseUrl("");
+      setModel("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status?.provider]);
+
   const onSave = () => {
     saveOllamaSettings({ baseUrl: baseUrl.trim(), model: model.trim() });
     setSavedFlash(true);
@@ -141,46 +152,57 @@ export function SettingsPanel() {
           </Field>
         )}
 
-        <Field
-          label="Model"
-          hint={
-            usingDefaultModel
-              ? `Using server default (${status?.defaultModel ?? "…"})`
-              : "Custom value"
-          }
-        >
-          <input
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            placeholder={status?.defaultModel ?? "qwen2.5:7b-instruct"}
-            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none transition placeholder:text-neutral-600 focus:border-[#1db954]/60"
-          />
-          {status?.models && status.models.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              <span className="self-center text-xs text-neutral-500">
-                Installed:
-              </span>
-              {status.models.map((m) => (
-                <button
-                  key={m}
-                  onClick={() => setModel(m)}
-                  className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-xs text-neutral-300 transition hover:border-[#1db954]/50 hover:text-white"
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-          )}
-        </Field>
+        {isGateway ? (
+          <p className="text-sm text-neutral-400">
+            Model is configured server-side via{" "}
+            <code className="text-neutral-300">LLM_MODEL</code> (currently{" "}
+            <code className="text-neutral-300">{status?.model}</code>). Set it in
+            your deployment&apos;s environment variables.
+          </p>
+        ) : (
+          <Field
+            label="Model"
+            hint={
+              usingDefaultModel
+                ? `Using server default (${status?.defaultModel ?? "…"})`
+                : "Custom value"
+            }
+          >
+            <input
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder={status?.defaultModel ?? "qwen2.5:7b-instruct"}
+              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none transition placeholder:text-neutral-600 focus:border-[#1db954]/60"
+            />
+            {status?.models && status.models.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <span className="self-center text-xs text-neutral-500">
+                  Installed:
+                </span>
+                {status.models.map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setModel(m)}
+                    className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-xs text-neutral-300 transition hover:border-[#1db954]/50 hover:text-white"
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            )}
+          </Field>
+        )}
 
         <div className="flex flex-wrap items-center gap-3 pt-1">
-          <button
-            onClick={onSave}
-            className="flex items-center gap-2 rounded-full bg-[#1db954] px-5 py-2 text-sm font-semibold text-black transition hover:scale-[1.03] hover:bg-[#1ed760]"
-          >
-            <IconDeviceFloppy size={16} />
-            {savedFlash ? "Saved ✓" : "Save"}
-          </button>
+          {!isGateway && (
+            <button
+              onClick={onSave}
+              className="flex items-center gap-2 rounded-full bg-[#1db954] px-5 py-2 text-sm font-semibold text-black transition hover:scale-[1.03] hover:bg-[#1ed760]"
+            >
+              <IconDeviceFloppy size={16} />
+              {savedFlash ? "Saved ✓" : "Save"}
+            </button>
+          )}
           <button
             onClick={() => check(baseUrl, model)}
             disabled={loading}
@@ -193,18 +215,22 @@ export function SettingsPanel() {
             )}
             Test connection
           </button>
-          <button
-            onClick={onReset}
-            className="text-xs text-neutral-500 transition hover:text-neutral-300"
-          >
-            Reset to defaults
-          </button>
+          {!isGateway && (
+            <button
+              onClick={onReset}
+              className="text-xs text-neutral-500 transition hover:text-neutral-300"
+            >
+              Reset to defaults
+            </button>
+          )}
         </div>
 
-        <p className="text-xs text-neutral-500">
-          Settings are stored in this browser and sent with each playlist
-          generation. Leave a field blank to use the server&apos;s env default.
-        </p>
+        {!isGateway && (
+          <p className="text-xs text-neutral-500">
+            Settings are stored in this browser and sent with each playlist
+            generation. Leave a field blank to use the server&apos;s env default.
+          </p>
+        )}
       </div>
 
       <YouTubeSettings />

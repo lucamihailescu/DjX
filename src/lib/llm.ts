@@ -56,17 +56,20 @@ export interface ChatArgs {
 }
 
 export async function chatJSON(args: ChatArgs): Promise<ChatResult> {
-  const model = resolveModel(args.model);
   const temperature = args.temperature ?? 0.7;
-  return llmProvider() === "gateway"
-    ? gatewayChat(model, args.system, args.user, temperature)
-    : ollamaChat(
-        resolveOllamaBaseUrl(args.baseUrl),
-        model,
-        args.system,
-        args.user,
-        temperature,
-      );
+  if (llmProvider() === "gateway") {
+    // The gateway model is operator-controlled via LLM_MODEL. Ignore any
+    // client/Settings model — it may be an Ollama id (e.g. "qwen2.5:7b") that
+    // the gateway rejects as invalid input.
+    return gatewayChat(defaultModel(), args.system, args.user, temperature);
+  }
+  return ollamaChat(
+    resolveOllamaBaseUrl(args.baseUrl),
+    resolveModel(args.model),
+    args.system,
+    args.user,
+    temperature,
+  );
 }
 
 /** Parse the model's reply as JSON, tolerating stray text around the object. */
@@ -146,7 +149,7 @@ async function gatewayChat(
     return {
       ok: false,
       status: 502,
-      error: `AI Gateway error (${res.status}): ${String(detail).slice(0, 200)}`,
+      error: `AI Gateway error (${res.status}) for model "${model}": ${String(detail).slice(0, 200)}`,
     };
   }
 
