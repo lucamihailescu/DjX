@@ -18,7 +18,12 @@ import {
   saveYouTubeKey,
   clearYouTubeKey,
 } from "@/lib/settings";
-import { youTubeServerHasKey, testYouTubeKey } from "@/lib/youtube";
+import {
+  youTubeServerHasKey,
+  testYouTubeKey,
+  getQuotaUsage,
+  type QuotaUsage,
+} from "@/lib/youtube";
 
 interface OllamaStatus {
   provider?: "ollama" | "gateway";
@@ -224,10 +229,12 @@ function YouTubeSettings() {
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(
     null,
   );
+  const [usage, setUsage] = useState<QuotaUsage | null>(null);
 
   useEffect(() => {
     setApiKey(getYouTubeKey());
     youTubeServerHasKey().then(setHasServerKey);
+    setUsage(getQuotaUsage());
   }, []);
 
   const onSave = async () => {
@@ -243,6 +250,7 @@ function YouTubeSettings() {
     const err = await testYouTubeKey(apiKey.trim() || undefined);
     setTesting(false);
     setTestResult(err ? { ok: false, msg: err } : { ok: true, msg: "Key works ✓" });
+    setUsage(getQuotaUsage());
   };
 
   const onReset = () => {
@@ -331,7 +339,59 @@ function YouTubeSettings() {
           <span className="text-neutral-400">YouTube Data API v3</span> enabled.
           Testing a key uses ~100 units of daily quota.
         </p>
+
+        {(apiKey.trim() || hasServerKey) && usage && (
+          <QuotaMeter usage={usage} onRefresh={() => setUsage(getQuotaUsage())} />
+        )}
       </div>
+    </div>
+  );
+}
+
+function QuotaMeter({
+  usage,
+  onRefresh,
+}: {
+  usage: QuotaUsage;
+  onRefresh: () => void;
+}) {
+  const pct = Math.min(100, Math.round((usage.used / usage.limit) * 100));
+  const bar =
+    pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-400" : "bg-[#1ed760]";
+
+  return (
+    <div className="border-t border-white/10 pt-4">
+      <div className="mb-1.5 flex items-baseline justify-between">
+        <span className="text-sm font-medium text-neutral-200">
+          Estimated quota used today
+        </span>
+        <button
+          onClick={onRefresh}
+          className="text-xs text-neutral-500 transition hover:text-neutral-300"
+        >
+          Refresh
+        </button>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+        <div
+          className={`h-full rounded-full transition-all ${bar}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <p className="mt-1.5 text-xs text-neutral-500">
+        ~{usage.used.toLocaleString()} / {usage.limit.toLocaleString()} units
+        ({pct}%) · estimate from this browser, resets midnight PT. The exact
+        figure is in{" "}
+        <a
+          href="https://console.cloud.google.com/apis/api/youtube.googleapis.com/quotas"
+          target="_blank"
+          rel="noreferrer"
+          className="text-neutral-400 underline transition hover:text-neutral-200"
+        >
+          Google Cloud Console
+        </a>
+        .
+      </p>
     </div>
   );
 }
