@@ -41,7 +41,7 @@ export async function curatePlaylist(
   prompt: string,
   pool: Track[],
 ): Promise<{ name: string; description: string; tracks: Track[] }> {
-  const { baseUrl, model } = getOllamaSettings();
+  const { model } = getOllamaSettings();
   const tracks = pool.map((t, i) => ({
     i,
     label: `${t.name} — ${t.artists.map((a) => a.name).join(", ")}`,
@@ -53,7 +53,6 @@ export async function curatePlaylist(
     body: JSON.stringify({
       prompt,
       tracks,
-      baseUrl: baseUrl || undefined,
       model: model || undefined,
     }),
   });
@@ -74,7 +73,7 @@ export async function fetchIntent(
   prompt: string,
   opts?: { refine?: string; current?: string[] },
 ): Promise<PlaylistIntent> {
-  const { baseUrl, model } = getOllamaSettings();
+  const { model } = getOllamaSettings();
   const res = await fetch("/api/playlist-intent", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -82,7 +81,6 @@ export async function fetchIntent(
       prompt,
       refine: opts?.refine || undefined,
       current: opts?.current || undefined,
-      baseUrl: baseUrl || undefined,
       model: model || undefined,
     }),
   });

@@ -55,7 +55,6 @@ function coerce(raw: unknown, max: number, fallbackName: string): Curation | nul
 export async function POST(req: Request) {
   let prompt = "";
   let candidates: Candidate[] = [];
-  let reqBaseUrl: unknown;
   let reqModel: unknown;
   try {
     const body = await req.json();
@@ -70,7 +69,6 @@ export async function POST(req: Request) {
           )
           .slice(0, 160)
       : [];
-    reqBaseUrl = body?.baseUrl;
     reqModel = body?.model;
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
@@ -93,7 +91,6 @@ export async function POST(req: Request) {
     system: SYSTEM_PROMPT,
     user: userContent,
     temperature: 0.7,
-    baseUrl: reqBaseUrl,
     model: reqModel,
   });
   if (!chat.ok || !chat.content) {

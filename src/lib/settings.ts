@@ -1,7 +1,8 @@
 "use client";
 
 export interface OllamaSettings {
-  baseUrl: string;
+  // Ollama model name only. The base URL is server-env-controlled (never the
+  // client) to avoid SSRF, so it isn't configurable here.
   model: string;
 }
 
@@ -60,22 +61,19 @@ async function decryptFromStorage(payload: string): Promise<string> {
   return new TextDecoder().decode(plain);
 }
 
-// Empty strings mean "use the server's env default".
+// Empty string means "use the server's env default".
 export function getOllamaSettings(): OllamaSettings {
-  if (typeof window === "undefined") return { baseUrl: "", model: "" };
+  if (typeof window === "undefined") return { model: "" };
   try {
     const raw = window.localStorage.getItem(KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      return {
-        baseUrl: typeof parsed?.baseUrl === "string" ? parsed.baseUrl : "",
-        model: typeof parsed?.model === "string" ? parsed.model : "",
-      };
+      return { model: typeof parsed?.model === "string" ? parsed.model : "" };
     }
   } catch {
     /* ignore malformed storage */
   }
-  return { baseUrl: "", model: "" };
+  return { model: "" };
 }
 
 export function saveOllamaSettings(s: OllamaSettings) {

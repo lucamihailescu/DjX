@@ -3,14 +3,15 @@ import {
   llmProvider,
   defaultModel,
   resolveModel,
-  resolveOllamaBaseUrl,
+  ollamaBaseUrl,
   DEFAULT_OLLAMA_BASE_URL,
 } from "@/lib/llm";
 
 // Reports the active LLM provider and its status for the Settings page.
 // - gateway: configured-or-not based on AI_GATEWAY_API_KEY (no model list).
-// - ollama: reachability + installed models (via /api/tags). ?baseUrl= lets
-//   the user test a value they're typing before saving.
+// - ollama: reachability + installed models (via /api/tags).
+// The Ollama base URL is taken from server env only (never the client) to
+// avoid SSRF; ?model= is accepted (it only affects the displayed model name).
 export async function GET(req: Request) {
   const provider = llmProvider();
   const { searchParams } = new URL(req.url);
@@ -31,7 +32,7 @@ export async function GET(req: Request) {
   }
 
   const model = resolveModel(searchParams.get("model"));
-  const baseUrl = resolveOllamaBaseUrl(searchParams.get("baseUrl"));
+  const baseUrl = ollamaBaseUrl();
   const base = {
     provider,
     baseUrl,

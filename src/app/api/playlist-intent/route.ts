@@ -44,7 +44,6 @@ export async function POST(req: Request) {
   let prompt = "";
   let refine = "";
   let current: string[] = [];
-  let reqBaseUrl: unknown;
   let reqModel: unknown;
   try {
     const body = await req.json();
@@ -53,7 +52,6 @@ export async function POST(req: Request) {
     current = Array.isArray(body?.current)
       ? body.current.filter((s: unknown): s is string => typeof s === "string").slice(0, 40)
       : [];
-    reqBaseUrl = body?.baseUrl;
     reqModel = body?.model;
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
@@ -77,7 +75,6 @@ export async function POST(req: Request) {
     system: SYSTEM_PROMPT,
     user: userContent,
     temperature: 0.8,
-    baseUrl: reqBaseUrl,
     model: reqModel,
   });
   if (!chat.ok || !chat.content) {

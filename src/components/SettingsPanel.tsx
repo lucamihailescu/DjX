@@ -33,17 +33,15 @@ interface OllamaStatus {
 
 export function SettingsPanel() {
   const saved = getOllamaSettings();
-  const [baseUrl, setBaseUrl] = useState(saved.baseUrl);
   const [model, setModel] = useState(saved.model);
   const [status, setStatus] = useState<OllamaStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
 
-  const check = useCallback(async (b: string, m: string) => {
+  const check = useCallback(async (m: string) => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (b.trim()) params.set("baseUrl", b.trim());
       if (m.trim()) params.set("model", m.trim());
       const res = await fetch(`/api/ollama?${params.toString()}`);
       setStatus(await res.json());
@@ -55,36 +53,33 @@ export function SettingsPanel() {
   }, []);
 
   useEffect(() => {
-    check(saved.baseUrl, saved.model);
+    check(saved.model);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // On the gateway, the model/URL are env-controlled. Drop any stale local
-  // Ollama settings so the client doesn't send an Ollama model id to it.
+  // On the gateway, the model is env-controlled. Drop any stale local Ollama
+  // model so the client doesn't send an Ollama model id to it.
   useEffect(() => {
-    if (status?.provider === "gateway" && (saved.baseUrl || saved.model)) {
+    if (status?.provider === "gateway" && saved.model) {
       clearOllamaSettings();
-      setBaseUrl("");
       setModel("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status?.provider]);
 
   const onSave = () => {
-    saveOllamaSettings({ baseUrl: baseUrl.trim(), model: model.trim() });
+    saveOllamaSettings({ model: model.trim() });
     setSavedFlash(true);
     setTimeout(() => setSavedFlash(false), 2000);
-    check(baseUrl, model);
+    check(model);
   };
 
   const onReset = () => {
     clearOllamaSettings();
-    setBaseUrl("");
     setModel("");
-    check("", "");
+    check("");
   };
 
-  const usingDefaultUrl = !baseUrl.trim();
   const usingDefaultModel = !model.trim();
   const isGateway = status?.provider === "gateway";
 
@@ -134,24 +129,6 @@ export function SettingsPanel() {
 
       {/* Editor */}
       <div className="space-y-5 rounded-2xl border border-white/10 bg-white/[0.02] p-5">
-        {!isGateway && (
-          <Field
-            label="Base URL"
-            hint={
-              usingDefaultUrl
-                ? `Using server default (${status?.defaultBaseUrl ?? "…"})`
-                : "Custom value"
-            }
-          >
-            <input
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder={status?.defaultBaseUrl ?? "http://localhost:11434"}
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none transition placeholder:text-neutral-600 focus:border-[#1db954]/60"
-            />
-          </Field>
-        )}
-
         {isGateway ? (
           <p className="text-sm text-neutral-400">
             Model is configured server-side via{" "}
@@ -204,7 +181,7 @@ export function SettingsPanel() {
             </button>
           )}
           <button
-            onClick={() => check(baseUrl, model)}
+            onClick={() => check(model)}
             disabled={loading}
             className="flex items-center gap-2 rounded-full border border-white/15 px-5 py-2 text-sm font-medium text-neutral-200 transition hover:bg-white/10 disabled:opacity-50"
           >

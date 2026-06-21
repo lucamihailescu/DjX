@@ -33,11 +33,20 @@ export function resolveModel(fromSettings?: unknown): string {
     : defaultModel();
 }
 
-/** Ollama base URL from Settings (per request) or env. */
-export function resolveOllamaBaseUrl(fromSettings?: unknown): string {
-  return typeof fromSettings === "string" && fromSettings.trim()
-    ? fromSettings.trim().replace(/\/+$/, "")
-    : DEFAULT_OLLAMA_BASE_URL;
+// Non-regex trailing-slash trim (avoids a ReDoS-prone pattern on the value).
+function stripTrailingSlashes(s: string): string {
+  let end = s.length;
+  while (end > 0 && s[end - 1] === "/") end--;
+  return s.slice(0, end);
+}
+
+/**
+ * Ollama base URL — ALWAYS from server env, never the client. The base URL is
+ * used to build a server-side fetch, so accepting it from a request would be
+ * SSRF (a caller could point us at internal services / cloud metadata).
+ */
+export function ollamaBaseUrl(): string {
+  return stripTrailingSlashes(DEFAULT_OLLAMA_BASE_URL);
 }
 
 export interface ChatResult {
@@ -51,8 +60,7 @@ export interface ChatArgs {
   system: string;
   user: string;
   temperature?: number;
-  baseUrl?: unknown; // Ollama only (from Settings)
-  model?: unknown; // from Settings
+  model?: unknown; // model name only (goes in the request body, not the URL)
 }
 
 export async function chatJSON(args: ChatArgs): Promise<ChatResult> {
@@ -64,7 +72,7 @@ export async function chatJSON(args: ChatArgs): Promise<ChatResult> {
     return gatewayChat(defaultModel(), args.system, args.user, temperature);
   }
   return ollamaChat(
-    resolveOllamaBaseUrl(args.baseUrl),
+    ollamaBaseUrl(),
     resolveModel(args.model),
     args.system,
     args.user,
