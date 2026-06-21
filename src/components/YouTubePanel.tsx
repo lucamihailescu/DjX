@@ -16,6 +16,7 @@ import {
 } from "@/lib/youtube";
 import { fetchIntent } from "@/lib/playlist";
 import { useYouTube } from "./youtube-context";
+import { VoiceButton } from "./VoiceButton";
 import { cn } from "@/lib/utils";
 
 type Tab = "search" | "ai";
@@ -215,21 +216,28 @@ export function YouTubePanel() {
             </div>
             <div className="mt-4 flex items-center justify-between gap-4">
               <span className="text-xs text-neutral-500">⌘/Ctrl + Enter</span>
-              <button
-                onClick={() => generate()}
-                disabled={aiBusy || !aiPrompt.trim()}
-                className="flex items-center gap-2 rounded-full bg-[#ff0033] px-5 py-2.5 text-sm font-semibold text-white transition hover:scale-[1.03] disabled:opacity-40 disabled:hover:scale-100"
-              >
-                {aiBusy ? (
-                  <>
-                    <IconLoader2 size={18} className="animate-spin" /> Building…
-                  </>
-                ) : (
-                  <>
-                    <IconSparkles size={18} /> Generate queue
-                  </>
-                )}
-              </button>
+              <div className="flex items-center gap-2">
+                <VoiceButton
+                  onTranscript={(t) => generate(t)}
+                  disabled={aiBusy}
+                  title="Speak a vibe"
+                />
+                <button
+                  onClick={() => generate()}
+                  disabled={aiBusy || !aiPrompt.trim()}
+                  className="flex items-center gap-2 rounded-full bg-[#ff0033] px-5 py-2.5 text-sm font-semibold text-white transition hover:scale-[1.03] disabled:opacity-40 disabled:hover:scale-100"
+                >
+                  {aiBusy ? (
+                    <>
+                      <IconLoader2 size={18} className="animate-spin" /> Building…
+                    </>
+                  ) : (
+                    <>
+                      <IconSparkles size={18} /> Generate queue
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
 

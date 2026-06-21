@@ -1,0 +1,19 @@
+apiVersion: governance.toolkit/v1
+name: project-safe-policy
+default_action: deny
+rules:
+  - name: allow-git-commands
+    condition: "action.type == 'execute' and action.command.startsWith('git')"
+    action: allow
+  - name: allow-specific-file-edits
+    condition: "action.type == 'write' or action.type == 'edit'"
+    action: allow
+  - name: allow-gh-actions
+    condition: "action.type == 'execute' and action.command.startsWith('gh')"
+    action: allow
+  - name: "Allow Claude Code Write Tool"
+    tool: "Write"
+    effect: "allow"
+    resources:
+      - "src/**"
+      - "package.json"

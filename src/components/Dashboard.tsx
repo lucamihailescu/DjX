@@ -19,6 +19,7 @@ import {
   IconSettings,
   IconLoader2,
   IconBrandYoutubeFilled,
+  IconDeviceSpeaker,
 } from "@tabler/icons-react";
 import { PlaybackBar } from "./PlaybackBar";
 import { SearchPanel } from "./SearchPanel";
@@ -33,6 +34,7 @@ import { MediaCard } from "./MediaCard";
 import { deletePlaylist } from "@/lib/playlist";
 import { getLikedTracks } from "@/lib/library";
 import { useLibrary } from "@/hooks/useLibrary";
+import { useSpotifyWebPlayer } from "@/hooks/useSpotifyWebPlayer";
 import { pickImage } from "@/lib/images";
 import { cn } from "@/lib/utils";
 
@@ -60,6 +62,9 @@ export function Dashboard({
   const [loadingMore, setLoadingMore] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const library = useLibrary(sdk);
+  // In-browser playback device (Web Playback SDK). null until ready / on non-Premium.
+  const webPlayer = useSpotifyWebPlayer(sdk);
+  const webDeviceId = webPlayer.deviceId;
 
   const PAGE = 24;
 
@@ -157,6 +162,17 @@ export function Dashboard({
   const play = useCallback(
     async (uris?: string[], context?: string) => {
       const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+      // Prefer the in-browser device when the Web Playback SDK is ready — plays
+      // right here in the tab. Fall back to a remote device if it fails.
+      if (webDeviceId) {
+        try {
+          await sdk.player.startResumePlayback(webDeviceId, context, uris);
+          notify("Playing in browser ▶");
+          return;
+        } catch {
+          /* fall through to remote devices */
+        }
+      }
       try {
         const { devices } = await sdk.player.getAvailableDevices();
         if (devices.length === 0) {
@@ -202,7 +218,7 @@ export function Dashboard({
         }
       }
     },
-    [sdk, notify],
+    [sdk, notify, webDeviceId],
   );
 
   return (
@@ -242,6 +258,14 @@ export function Dashboard({
           </nav>
 
           <div className="flex items-center gap-3">
+            {webPlayer.status === "ready" && (
+              <span
+                className="hidden items-center gap-1.5 rounded-full border border-[#1db954]/30 bg-[#1db954]/10 px-3 py-1 text-xs text-[#1ed760] md:flex"
+                title="This tab is a Spotify playback device — playback happens here"
+              >
+                <IconDeviceSpeaker size={13} /> In-browser playback
+              </span>
+            )}
             <div className="hidden text-right sm:block">
               <div className="text-sm font-medium leading-tight">
                 {profile.display_name}
