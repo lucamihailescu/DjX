@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Touch devices have no hover, so Tailwind's hover/group-hover variants
+   (gated behind `@media (hover: hover)` in v4) never fire — hover-reveal
+   controls would be invisible/unusable. Use `touch:` to force them visible. */
+@custom-variant touch (@media (hover: none));
+
 :root {
   --background: #050505;
   --foreground: #ededed;

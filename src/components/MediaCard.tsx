@@ -70,7 +70,7 @@ export function MediaCard({
           <button
             onClick={() => setConfirming(true)}
             aria-label={`Delete ${title}`}
-            className="absolute left-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-neutral-200 opacity-0 backdrop-blur transition hover:bg-red-500 hover:text-white group-hover:opacity-100"
+            className="absolute left-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-neutral-200 opacity-0 backdrop-blur transition hover:bg-red-500 hover:text-white group-hover:opacity-100 touch:opacity-100"
           >
             <IconTrash size={15} />
           </button>
@@ -114,7 +114,7 @@ export function MediaCard({
               "absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 backdrop-blur transition hover:scale-110",
               saved
                 ? "text-[#1ed760] opacity-100"
-                : "text-neutral-200 opacity-0 hover:text-white group-hover:opacity-100",
+                : "text-neutral-200 opacity-0 hover:text-white group-hover:opacity-100 touch:opacity-100",
             )}
           >
             {saved ? <IconHeartFilled size={16} /> : <IconHeart size={16} />}
@@ -125,7 +125,7 @@ export function MediaCard({
           <button
             onClick={onPlay}
             aria-label={`Play ${title}`}
-            className="absolute bottom-2 right-2 flex h-11 w-11 translate-y-2 items-center justify-center rounded-full bg-[#1db954] text-black opacity-0 shadow-xl transition duration-200 hover:scale-105 group-hover:translate-y-0 group-hover:opacity-100"
+            className="absolute bottom-2 right-2 flex h-11 w-11 translate-y-2 items-center justify-center rounded-full bg-[#1db954] text-black opacity-0 shadow-xl transition duration-200 hover:scale-105 group-hover:translate-y-0 group-hover:opacity-100 touch:translate-y-0 touch:opacity-100"
           >
             <IconPlayerPlayFilled size={20} />
           </button>
@@ -142,7 +142,7 @@ export function MediaCard({
               href={href}
               target="_blank"
               rel="noreferrer"
-              className="shrink-0 text-neutral-500 opacity-0 transition hover:text-white group-hover:opacity-100"
+              className="shrink-0 text-neutral-500 opacity-0 transition hover:text-white group-hover:opacity-100 touch:opacity-100"
               aria-label="Open in Spotify"
             >
               <IconExternalLink size={14} />
