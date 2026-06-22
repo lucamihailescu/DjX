@@ -43,11 +43,17 @@ type Tab = "overview" | "search" | "create" | "youtube" | "settings";
 export function Dashboard({
   sdk,
   profile,
+  entraUser,
   onLogout,
   onReconnect,
 }: {
   sdk: SpotifyApi;
   profile: UserProfile;
+  entraUser: {
+    name: string | null;
+    email: string | null;
+    image: string | null;
+  } | null;
   onLogout: () => void;
   onReconnect: () => void;
 }) {
@@ -267,23 +273,46 @@ export function Dashboard({
               </span>
             )}
             <div className="hidden text-right sm:block">
-              <div className="text-sm font-medium leading-tight">
-                {profile.display_name}
-              </div>
-              <div className="text-xs capitalize text-neutral-400">
-                {profile.product} account
-              </div>
+              {entraUser ? (
+                <>
+                  <div className="text-sm font-medium leading-tight">
+                    {entraUser.name ?? entraUser.email}
+                  </div>
+                  {entraUser.email && (
+                    <div className="text-xs text-neutral-400">
+                      {entraUser.email}
+                    </div>
+                  )}
+                  <div className="mt-0.5 text-xs text-neutral-500">
+                    Spotify:{" "}
+                    <span className="text-neutral-400">
+                      {profile.display_name}
+                    </span>{" "}
+                    <span className="capitalize">({profile.product})</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-sm font-medium leading-tight">
+                    {profile.display_name}
+                  </div>
+                  <div className="text-xs capitalize text-neutral-400">
+                    {profile.product} account
+                  </div>
+                </>
+              )}
             </div>
-            {pickImage(profile.images, "small") ? (
+            {entraUser?.image || pickImage(profile.images, "small") ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={pickImage(profile.images, "small")}
+                src={entraUser?.image || pickImage(profile.images, "small")}
                 alt=""
                 className="h-9 w-9 rounded-full object-cover ring-2 ring-[#1db954]/40"
               />
             ) : (
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#1db954] text-sm font-bold text-black">
-                {profile.display_name?.[0]?.toUpperCase() ?? "?"}
+                {(entraUser?.name ?? profile.display_name)?.[0]?.toUpperCase() ??
+                  "?"}
               </div>
             )}
             <button

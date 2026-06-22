@@ -8,7 +8,11 @@ import { Dashboard } from "@/components/Dashboard";
 export function HomeClient({
   entraUser,
 }: {
-  entraUser: { name: string | null; email: string | null } | null;
+  entraUser: {
+    name: string | null;
+    email: string | null;
+    image: string | null;
+  } | null;
 }) {
   const { status, sdk, profile, error, login, logout, reconnect } = useSpotify();
 
@@ -25,6 +29,7 @@ export function HomeClient({
       <Dashboard
         sdk={sdk}
         profile={profile}
+        entraUser={entraUser}
         onLogout={logout}
         onReconnect={reconnect}
       />
