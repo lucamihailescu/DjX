@@ -23,13 +23,10 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "DjX",
   },
-  icons: {
-    icon: [
-      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
-    ],
-    apple: "/apple-touch-icon.png",
-  },
+  // Icons come from the file conventions src/app/icon.png and
+  // src/app/apple-icon.png. Next emits content-hashed URLs (e.g.
+  // /icon.png?<hash>) so updated artwork busts the browser/CDN cache
+  // automatically — a static metadata.icons path would serve stale bytes.
 };
 
 export const viewport: Viewport = {
