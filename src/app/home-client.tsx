@@ -5,7 +5,11 @@ import { useSpotify } from "@/hooks/useSpotify";
 import { Login } from "@/components/Login";
 import { Dashboard } from "@/components/Dashboard";
 
-export function HomeClient() {
+export function HomeClient({
+  entraUser,
+}: {
+  entraUser: { name: string | null; email: string | null } | null;
+}) {
   const { status, sdk, profile, error, login, logout, reconnect } = useSpotify();
 
   if (status === "loading") {
@@ -27,5 +31,11 @@ export function HomeClient() {
     );
   }
 
-  return <Login onLogin={login} error={status === "error" ? error : null} />;
+  return (
+    <Login
+      onLogin={login}
+      error={status === "error" ? error : null}
+      entraUser={entraUser}
+    />
+  );
 }
