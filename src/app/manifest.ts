@@ -1,4 +1,20 @@
+import { createHash } from "crypto";
+import { readFileSync } from "fs";
+import { join } from "path";
 import type { MetadataRoute } from "next";
+
+// Append a short content hash to a /public icon URL so updated artwork busts
+// the browser/CDN cache (mirrors how Next hashes the file-based app icons).
+// Generated at build time; falls back to the bare path if the file is missing.
+function hashed(file: string): string {
+  try {
+    const buf = readFileSync(join(process.cwd(), "public", file));
+    const h = createHash("md5").update(buf).digest("hex").slice(0, 8);
+    return `/${file}?${h}`;
+  } catch {
+    return `/${file}`;
+  }
+}
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
@@ -14,10 +30,10 @@ export default function manifest(): MetadataRoute.Manifest {
     orientation: "portrait-primary",
     categories: ["music", "entertainment"],
     icons: [
-      { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: hashed("icon-192.png"), sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: hashed("icon-512.png"), sizes: "512x512", type: "image/png", purpose: "any" },
       {
-        src: "/icon-maskable-512.png",
+        src: hashed("icon-maskable-512.png"),
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",
