@@ -111,6 +111,11 @@ export function Dashboard({
     })();
   }, [sdk]);
 
+  const notify = useCallback((msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3500);
+  }, []);
+
   const loadMore = useCallback(
     async (key: "tracks" | "artists" | "playlists" | "liked") => {
       setLoadingMore(key);
@@ -134,9 +139,7 @@ export function Dashboard({
         setLoadingMore(null);
       }
     },
-    // notify is defined below; stable via useCallback
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sdk, topTracks.length, topArtists.length, playlists.length, liked.length],
+    [sdk, topTracks.length, topArtists.length, playlists.length, liked.length, notify],
   );
 
   // Prime saved-state for every track id we display so hearts render correctly.
@@ -145,11 +148,6 @@ export function Dashboard({
     const ids = [...topTracks, ...recent, ...liked].map((t) => t.id);
     if (ids.length) prime(ids);
   }, [topTracks, recent, liked, prime]);
-
-  const notify = useCallback((msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3500);
-  }, []);
 
   const removePlaylist = useCallback(
     async (id: string) => {
@@ -233,33 +231,35 @@ export function Dashboard({
       <div className="min-h-screen pb-28">
       {/* Top bar */}
       <header className="sticky top-0 z-40 border-b border-white/5 bg-black/40 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-y-2 px-4 py-3">
           <div className="flex items-center gap-2">
             <IconBrandSpotify size={28} className="text-[#1db954]" />
             <span className="text-lg font-bold tracking-tight">DjX</span>
           </div>
 
-          <nav className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 p-1">
-            <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>
-              <IconLayoutGrid size={16} /> Overview
+          <nav className="order-last flex w-full items-center justify-between gap-1 rounded-full border border-white/10 bg-white/5 p-1 md:order-none md:w-auto md:justify-start">
+            <TabButton active={tab === "overview"} onClick={() => setTab("overview")} label="Overview">
+              <IconLayoutGrid size={16} />
             </TabButton>
-            <TabButton active={tab === "search"} onClick={() => setTab("search")}>
-              <IconSearch size={16} /> Search
+            <TabButton active={tab === "search"} onClick={() => setTab("search")} label="Search">
+              <IconSearch size={16} />
             </TabButton>
-            <TabButton active={tab === "create"} onClick={() => setTab("create")}>
-              <IconSparkles size={16} /> Create
+            <TabButton active={tab === "create"} onClick={() => setTab("create")} label="Create">
+              <IconSparkles size={16} />
             </TabButton>
             <TabButton
               active={tab === "youtube"}
               onClick={() => setTab("youtube")}
+              label="YouTube"
             >
-              <IconBrandYoutubeFilled size={16} /> YouTube
+              <IconBrandYoutubeFilled size={16} />
             </TabButton>
             <TabButton
               active={tab === "settings"}
               onClick={() => setTab("settings")}
+              label="Settings"
             >
-              <IconSettings size={16} /> Settings
+              <IconSettings size={16} />
             </TabButton>
           </nav>
 
@@ -580,23 +580,30 @@ function Grid({ children }: { children: React.ReactNode }) {
 function TabButton({
   active,
   onClick,
+  label,
   children,
 }: {
   active: boolean;
   onClick: () => void;
+  label: string;
   children: React.ReactNode;
 }) {
   return (
     <button
       onClick={onClick}
+      aria-label={label}
+      title={label}
       className={cn(
-        "flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition",
+        // On mobile the nav is a full-width row, so tabs share the space and
+        // show icon-only; labels return at md where the pill sits inline.
+        "flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition md:flex-none md:px-4",
         active
           ? "bg-white text-black"
           : "text-neutral-300 hover:text-white",
       )}
     >
       {children}
+      <span className="hidden md:inline">{label}</span>
     </button>
   );
 }
