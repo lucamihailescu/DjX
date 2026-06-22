@@ -14,10 +14,41 @@ import { useYouTube } from "./youtube-context";
 import type { YouTubeResult } from "@/lib/youtube";
 import { fetchDjLine, synthesizeSpeech } from "@/lib/dj";
 
+declare global {
+  interface Window {
+    YT?: typeof YT;
+    onYouTubeIframeAPIReady?: () => void;
+  }
+}
+
+const IFRAME_API_SRC = "https://www.youtube.com/iframe_api";
+
+// Load the official IFrame Player API once and resolve when YT.Player exists.
+let apiReadyPromise: Promise<void> | null = null;
+function loadYouTubeApi(): Promise<void> {
+  if (typeof window === "undefined") return Promise.resolve();
+  if (window.YT?.Player) return Promise.resolve();
+  if (apiReadyPromise) return apiReadyPromise;
+  apiReadyPromise = new Promise<void>((resolve) => {
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      prev?.();
+      resolve();
+    };
+    if (!document.querySelector(`script[src="${IFRAME_API_SRC}"]`)) {
+      const s = document.createElement("script");
+      s.src = IFRAME_API_SRC;
+      document.body.appendChild(s);
+    }
+  });
+  return apiReadyPromise;
+}
+
 /**
  * Persistent YouTube player docked above the playback bar. Rendered once at the
- * Dashboard level so it stays mounted across tab switches — audio/video keep
- * playing while you browse, and the PlaybackBar can reflect what's playing.
+ * Dashboard level so it stays mounted across tab switches. Uses the official
+ * IFrame Player API so the ENDED event reliably drives queue auto-advance (the
+ * old raw-postMessage handshake did not deliver onStateChange consistently).
  */
 export function YouTubeMiniPlayer() {
   const {
@@ -31,15 +62,21 @@ export function YouTubeMiniPlayer() {
     djEnabled,
     setDjEnabled,
   } = useYouTube();
-  const [origin, setOrigin] = useState("");
   const [djSpeaking, setDjSpeaking] = useState(false);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // Latest values for the DJ orchestration, which runs from a player event
-  // callback (stale closures otherwise).
+  // The host div React owns; the API replaces an imperative child of it with the
+  // iframe, so React never manages the YT-controlled node directly.
+  const hostRef = useRef<HTMLDivElement>(null);
+  const playerRef = useRef<YT.Player | null>(null);
+  const playerReadyRef = useRef(false);
+  const loadedVideoIdRef = useRef<string | null>(null);
+
+  // Latest values for callbacks that run outside React's render (player events).
   const queueRef = useRef<YouTubeResult[]>([]);
   const currentRef = useRef<YouTubeResult | null>(null);
   const djRef = useRef(false);
+  const volumeRef = useRef(volume);
+  const advanceRef = useRef<() => void>(() => {});
   const djAudioRef = useRef<HTMLAudioElement | null>(null);
   const djResolveRef = useRef<(() => void) | null>(null);
   useEffect(() => {
@@ -51,10 +88,6 @@ export function YouTubeMiniPlayer() {
   useEffect(() => {
     djRef.current = djEnabled;
   }, [djEnabled]);
-
-  useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
 
   // Stop any in-flight DJ intro (on manual skip / close).
   const cancelDj = useCallback(() => {
@@ -103,6 +136,9 @@ export function YouTubeMiniPlayer() {
     }
     next();
   }, [next, playIntro]);
+  useEffect(() => {
+    advanceRef.current = advance;
+  }, [advance]);
 
   const skipNext = useCallback(() => {
     cancelDj();
@@ -117,73 +153,71 @@ export function YouTubeMiniPlayer() {
     stop();
   }, [cancelDj, stop]);
 
-  // Drive the embedded player's volume via the IFrame API postMessage protocol
-  // (requires enablejsapi=1). Commands sent before the player is ready are
-  // ignored, so we also re-send on load.
-  const command = useCallback((func: string, args: unknown[] = []) => {
-    iframeRef.current?.contentWindow?.postMessage(
-      JSON.stringify({ event: "command", func, args }),
-      "https://www.youtube.com",
-    );
-  }, []);
+  const hasCurrent = !!current;
 
-  // Subscribe to the player's event stream. The embed only starts posting
-  // onStateChange messages after it receives a "listening" handshake.
-  const register = useCallback(() => {
-    iframeRef.current?.contentWindow?.postMessage(
-      JSON.stringify({ event: "listening", channel: "widget" }),
-      "https://www.youtube.com",
-    );
-  }, []);
-
+  // Create the player when a video first appears; destroy it when playback
+  // stops or the component unmounts.
   useEffect(() => {
-    command("setVolume", [volume]);
-  }, [volume, current?.videoId, command]);
-
-  // Auto-advance the queue when a video ends (IFrame API state 0 = ENDED).
-  useEffect(() => {
-    function onMessage(e: MessageEvent) {
-      if (e.origin !== "https://www.youtube.com") return;
-      let data: unknown = e.data;
-      if (typeof data === "string") {
-        try {
-          data = JSON.parse(data);
-        } catch {
-          return;
-        }
+    if (!hasCurrent) return;
+    let cancelled = false;
+    loadYouTubeApi().then(() => {
+      if (cancelled || playerRef.current || !hostRef.current || !window.YT) {
+        return;
       }
-      const msg = data as { event?: string; info?: unknown };
-      if (msg?.event === "onStateChange" && msg?.info === 0) advance();
-    }
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, [advance]);
+      const mount = document.createElement("div");
+      mount.className = "h-full w-full";
+      hostRef.current.appendChild(mount);
+      const startId = currentRef.current?.videoId;
+      playerRef.current = new window.YT.Player(mount, {
+        videoId: startId,
+        playerVars: {
+          autoplay: 1,
+          rel: 0,
+          playsinline: 1,
+          origin: window.location.origin,
+        },
+        events: {
+          onReady: (e) => {
+            playerReadyRef.current = true;
+            loadedVideoIdRef.current = startId ?? null;
+            e.target.setVolume(volumeRef.current);
+          },
+          onStateChange: (e) => {
+            if (e.data === window.YT?.PlayerState.ENDED) advanceRef.current();
+          },
+        },
+      });
+    });
+    return () => {
+      cancelled = true;
+      playerRef.current?.destroy();
+      playerRef.current = null;
+      playerReadyRef.current = false;
+      loadedVideoIdRef.current = null;
+    };
+  }, [hasCurrent]);
+
+  // Load a new video when the current track changes (player already created).
+  useEffect(() => {
+    const id = current?.videoId;
+    if (!id || !playerReadyRef.current || !playerRef.current) return;
+    if (loadedVideoIdRef.current === id) return;
+    loadedVideoIdRef.current = id;
+    playerRef.current.loadVideoById(id);
+  }, [current?.videoId]);
+
+  // Keep the embedded player's volume in sync.
+  useEffect(() => {
+    volumeRef.current = volume;
+    if (playerReadyRef.current) playerRef.current?.setVolume(volume);
+  }, [volume]);
 
   if (!current) return null;
-
-  const src =
-    `https://www.youtube.com/embed/${current.videoId}?autoplay=1&rel=0&playsinline=1&enablejsapi=1` +
-    (origin
-      ? `&origin=${encodeURIComponent(origin)}&widget_referrer=${encodeURIComponent(origin)}`
-      : "");
 
   return (
     <div className="fixed bottom-24 right-4 z-50 w-[340px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-white/10 bg-black shadow-2xl">
       <div className="relative aspect-video w-full">
-        <iframe
-          key={current.videoId}
-          ref={iframeRef}
-          className="h-full w-full"
-          src={src}
-          title={current.title}
-          referrerPolicy="strict-origin-when-cross-origin"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowFullScreen
-          onLoad={() => {
-            register();
-            command("setVolume", [volume]);
-          }}
-        />
+        <div ref={hostRef} className="h-full w-full" />
         {djSpeaking && (
           <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/70 text-sm font-medium text-white">
             <IconMicrophoneFilled size={18} className="animate-pulse text-[#1ed760]" />
@@ -205,9 +239,7 @@ export function YouTubeMiniPlayer() {
         <button
           onClick={() => setDjEnabled(!djEnabled)}
           className={`rounded-full p-1.5 transition hover:bg-white/10 ${
-            djEnabled
-              ? "text-[#1ed760]"
-              : "text-neutral-400 hover:text-white"
+            djEnabled ? "text-[#1ed760]" : "text-neutral-400 hover:text-white"
           }`}
           aria-label={djEnabled ? "Turn AI DJ off" : "Turn AI DJ on"}
           title="AI DJ — spoken intros between queued tracks"
@@ -228,8 +260,8 @@ export function YouTubeMiniPlayer() {
         </button>
         <button
           onClick={() => {
-            command("seekTo", [0, true]);
-            command("playVideo");
+            playerRef.current?.seekTo(0, true);
+            playerRef.current?.playVideo();
           }}
           className="rounded-full p-1.5 text-neutral-400 transition hover:bg-white/10 hover:text-white"
           aria-label="Replay"
