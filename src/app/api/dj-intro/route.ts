@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { chatJSON, extractJSON } from "@/lib/llm";
+import { requireApiAuth } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -20,6 +21,8 @@ function coerceLine(raw: unknown): string {
 }
 
 export async function POST(req: Request) {
+  const denied = await requireApiAuth(req, 20);
+  if (denied) return denied;
   let track = "";
   let prev = "";
   let reqModel: unknown;

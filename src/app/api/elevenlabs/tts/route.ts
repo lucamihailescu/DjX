@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireApiAuth } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -18,6 +19,8 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const denied = await requireApiAuth(req, 20);
+  if (denied) return denied;
   const headerKey = req.headers.get("x-elevenlabs-key")?.trim();
   const key = headerKey || process.env.ELEVENLABS_API_KEY;
   if (!key) {

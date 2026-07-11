@@ -7,8 +7,8 @@ export interface YouTubeResult {
   thumbnail: string;
 }
 
-function keyHeader(explicitKey?: string): HeadersInit {
-  const key = explicitKey ?? getYouTubeKey();
+async function keyHeader(explicitKey?: string): Promise<HeadersInit> {
+  const key = explicitKey ?? (await getYouTubeKey());
   return key ? { "x-youtube-key": key } : {};
 }
 
@@ -66,7 +66,7 @@ function recordQuota(units: number): void {
 
 export async function searchYouTube(q: string): Promise<YouTubeResult[]> {
   const res = await fetch(`/api/youtube?q=${encodeURIComponent(q)}`, {
-    headers: keyHeader(),
+    headers: await keyHeader(),
   });
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error(data?.error ?? "YouTube search failed.");
@@ -109,7 +109,9 @@ export async function youTubeServerHasKey(): Promise<boolean> {
 /** Validate a key with a tiny real search. Returns null on success, else error. */
 export async function testYouTubeKey(key?: string): Promise<string | null> {
   try {
-    const res = await fetch("/api/youtube?q=test", { headers: keyHeader(key) });
+    const res = await fetch("/api/youtube?q=test", {
+      headers: await keyHeader(key),
+    });
     const data = await res.json().catch(() => null);
     if (!res.ok) return data?.error ?? "YouTube request failed.";
     recordQuota(SEARCH_COST);

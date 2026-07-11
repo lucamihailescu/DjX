@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readKV, writeKV } from "@/lib/db";
+import { requireApiAuth } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
 
@@ -24,13 +25,21 @@ async function userIdFromRequest(req: Request): Promise<string | null> {
 }
 
 export async function GET(req: Request) {
+  const denied = await requireApiAuth(req);
+  if (denied) return denied;
   const userId = await userIdFromRequest(req);
-  if (!userId) return NextResponse.json({ items: [] });
+  // 401 (not an empty list) so the client keeps its local copy when the
+  // Spotify token is expired/invalid instead of treating it as truth.
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   const items = (await readKV<unknown[]>(userId, NAMESPACE)) ?? [];
   return NextResponse.json({ items });
 }
 
 export async function PUT(req: Request) {
+  const denied = await requireApiAuth(req);
+  if (denied) return denied;
   const userId = await userIdFromRequest(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

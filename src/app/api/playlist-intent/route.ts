@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { chatJSON, extractJSON } from "@/lib/llm";
+import { requireApiAuth } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -55,6 +56,8 @@ function coerceIntent(raw: unknown, fallbackName: string): Intent | null {
 }
 
 export async function POST(req: Request) {
+  const denied = await requireApiAuth(req, 20);
+  if (denied) return denied;
   let prompt = "";
   let refine = "";
   let current: string[] = [];

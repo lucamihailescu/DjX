@@ -66,9 +66,16 @@ export function YouTubeProvider({
 
   // Load the local cache instantly, then reconcile with the server copy.
   useEffect(() => {
+    let local: YouTubeResult[] = [];
     try {
       const raw = window.localStorage.getItem(HISTORY_KEY);
-      if (raw) setHistory(JSON.parse(raw));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          local = parsed;
+          setHistory(parsed);
+        }
+      }
       setDjEnabledState(window.localStorage.getItem(DJ_KEY) === "1");
     } catch {
       /* ignore */
@@ -77,13 +84,19 @@ export function YouTubeProvider({
       const token = await getToken?.();
       if (!token) return;
       const server = await loadHistory(token);
-      if (server) {
+      // null = unreachable or unauthorized (expired token) — keep the local copy.
+      if (!server) return;
+      if (server.length > 0) {
         setHistory(server);
         try {
           window.localStorage.setItem(HISTORY_KEY, JSON.stringify(server));
         } catch {
           /* ignore */
         }
+      } else if (local.length > 0) {
+        // Server store is empty but we have a local copy — seed the server
+        // with it rather than wiping local state.
+        saveHistory(token, local);
       }
     })();
   }, [getToken]);

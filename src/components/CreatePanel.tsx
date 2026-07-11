@@ -123,6 +123,8 @@ export function CreatePanel({
     if (!name.trim() || tracks.length === 0) return;
     setStage("saving");
     setError(null);
+    // Clear a previous 403 banner — this attempt decides whether it's still true.
+    setScopeBlocked(false);
     try {
       const res = await createPlaylist(
         sdk,
@@ -194,6 +196,7 @@ export function CreatePanel({
     setTracks([]);
     setResult(null);
     setError(null);
+    setScopeBlocked(false);
     setRefineText("");
   }
 

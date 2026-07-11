@@ -6,6 +6,7 @@ import {
   ollamaBaseUrl,
   DEFAULT_OLLAMA_BASE_URL,
 } from "@/lib/llm";
+import { requireApiAuth } from "@/lib/api-auth";
 
 // Reports the active LLM provider and its status for the Settings page.
 // - gateway: configured-or-not based on AI_GATEWAY_API_KEY (no model list).
@@ -13,6 +14,8 @@ import {
 // The Ollama base URL is taken from server env only (never the client) to
 // avoid SSRF; ?model= is accepted (it only affects the displayed model name).
 export async function GET(req: Request) {
+  const denied = await requireApiAuth(req);
+  if (denied) return denied;
   const provider = llmProvider();
   const { searchParams } = new URL(req.url);
 

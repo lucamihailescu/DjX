@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { google } from "googleapis";
+import { requireApiAuth } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
 
@@ -13,6 +14,8 @@ export interface YouTubeResult {
 }
 
 export async function GET(req: Request) {
+  const denied = await requireApiAuth(req);
+  if (denied) return denied;
   // A key set in Settings (this browser) takes precedence over the env key.
   const headerKey = req.headers.get("x-youtube-key")?.trim();
   const hasServerKey = Boolean(process.env.YOUTUBE_API_KEY);

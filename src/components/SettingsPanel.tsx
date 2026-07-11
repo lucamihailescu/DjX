@@ -240,7 +240,7 @@ function YouTubeSettings() {
   const [usage, setUsage] = useState<QuotaUsage | null>(null);
 
   useEffect(() => {
-    setApiKey(getYouTubeKey());
+    getYouTubeKey().then(setApiKey);
     youTubeServerHasKey().then(setHasServerKey);
     setUsage(getQuotaUsage());
   }, []);

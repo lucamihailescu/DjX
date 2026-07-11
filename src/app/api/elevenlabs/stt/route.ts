@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireApiAuth } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -9,6 +10,8 @@ const MODEL_ID = process.env.ELEVENLABS_STT_MODEL || "scribe_v1";
 const TIMEOUT_MS = Number(process.env.ELEVENLABS_TIMEOUT_MS ?? 30_000);
 
 export async function POST(req: Request) {
+  const denied = await requireApiAuth(req, 20);
+  if (denied) return denied;
   const headerKey = req.headers.get("x-elevenlabs-key")?.trim();
   const key = headerKey || process.env.ELEVENLABS_API_KEY;
   if (!key) {

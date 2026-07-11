@@ -16,6 +16,7 @@ import {
   IconCheck,
   IconBrandYoutubeFilled,
   IconWaveSine,
+  IconPlaylist,
 } from "@tabler/icons-react";
 import { pickImage } from "@/lib/images";
 import { msToTime, cn } from "@/lib/utils";
@@ -28,9 +29,17 @@ export function PlaybackBar({ sdk }: { sdk: SpotifyApi }) {
   const [busy, setBusy] = useState(false);
   const [devices, setDevices] = useState<Device[]>([]);
   const [devicesOpen, setDevicesOpen] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
   const [volume, setVolume] = useState(50);
   const [vizOpen, setVizOpen] = useState(false);
   const draggingVolume = useRef(false);
+  const volumeCommitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (volumeCommitTimer.current) clearTimeout(volumeCommitTimer.current);
+    };
+  }, []);
 
   const noDevice = !state;
 
@@ -289,21 +298,87 @@ export function PlaybackBar({ sdk }: { sdk: SpotifyApi }) {
                   max={100}
                   value={volume}
                   disabled={noDevice}
+                  // Debounced commit so mouse drags, taps, AND keyboard arrows
+                  // all set the device volume and release the sync lock —
+                  // mouseup/touchend never fire for keyboard input.
                   onChange={(e) => {
+                    const v = Number(e.target.value);
                     draggingVolume.current = true;
-                    setVolume(Number(e.target.value));
-                  }}
-                  onMouseUp={(e) => {
-                    draggingVolume.current = false;
-                    commitVolume(Number((e.target as HTMLInputElement).value));
-                  }}
-                  onTouchEnd={(e) => {
-                    draggingVolume.current = false;
-                    commitVolume(Number((e.target as HTMLInputElement).value));
+                    setVolume(v);
+                    if (volumeCommitTimer.current) {
+                      clearTimeout(volumeCommitTimer.current);
+                    }
+                    volumeCommitTimer.current = setTimeout(() => {
+                      draggingVolume.current = false;
+                      commitVolume(v);
+                    }, 300);
                   }}
                   className="h-1 w-24 cursor-pointer appearance-none rounded-full bg-white/20 accent-[#1db954] disabled:opacity-40"
                   aria-label="Volume"
                 />
+              </div>
+
+              {/* Queue */}
+              <div className="relative">
+                <button
+                  onClick={() => setQueueOpen((o) => !o)}
+                  className={cn(
+                    "rounded-full p-2 transition hover:bg-white/10",
+                    queueOpen
+                      ? "text-[#1ed760]"
+                      : "text-neutral-300 hover:text-white",
+                  )}
+                  aria-label="Queue"
+                  title="Queue"
+                >
+                  <IconPlaylist size={18} />
+                </button>
+
+                {queueOpen && (
+                  <div className="absolute bottom-12 right-0 w-72 overflow-hidden rounded-xl border border-white/10 bg-neutral-900/95 shadow-2xl backdrop-blur-xl">
+                    <div className="border-b border-white/5 px-3 py-2 text-xs font-semibold text-neutral-400">
+                      Up next
+                    </div>
+                    {queue.length === 0 ? (
+                      <div className="px-3 py-4 text-xs text-neutral-500">
+                        The queue is empty.
+                      </div>
+                    ) : (
+                      <div className="max-h-80 overflow-y-auto">
+                        {queue.slice(0, 20).map((t, i) => {
+                          const track = "album" in t ? t : null;
+                          return (
+                            <div
+                              key={`${t.id}-${i}`}
+                              className="flex items-center gap-3 px-3 py-2"
+                            >
+                              {track ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={pickImage(track.album.images, "small")}
+                                  alt=""
+                                  className="h-8 w-8 shrink-0 rounded object-cover"
+                                />
+                              ) : (
+                                <div className="h-8 w-8 shrink-0 rounded bg-white/5" />
+                              )}
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-sm text-neutral-100">
+                                  {t.name}
+                                </span>
+                                <span className="block truncate text-xs text-neutral-500">
+                                  {track
+                                    ? track.artists.map((a) => a.name).join(", ")
+                                    : ""}
+                                </span>
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Device picker */}

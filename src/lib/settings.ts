@@ -86,17 +86,18 @@ export function clearOllamaSettings() {
   window.localStorage.removeItem(KEY);
 }
 
-/** YouTube Data API key stored in this browser ("" means use the server env). */
-export function getYouTubeKey(): string {
+/**
+ * YouTube Data API key stored in this browser ("" means use the server env).
+ * Stored encrypted; resolves the decrypted value so it can be sent as a
+ * request header, like `getElevenLabsKey`. Legacy plaintext values pass
+ * through unchanged.
+ */
+export async function getYouTubeKey(): Promise<string> {
   if (typeof window === "undefined") return "";
   try {
     const stored = window.localStorage.getItem(YT_KEY) ?? "";
     if (!stored) return "";
-    if (!stored.startsWith(YT_KEY_ENC_PREFIX)) return stored;
-    void decryptFromStorage(stored).then((decrypted) => {
-      if (decrypted) window.localStorage.setItem(YT_KEY, decrypted ? `${YT_KEY_ENC_PREFIX}${stored.slice(YT_KEY_ENC_PREFIX.length)}` : "");
-    });
-    return "";
+    return await decryptFromStorage(stored);
   } catch {
     return "";
   }
